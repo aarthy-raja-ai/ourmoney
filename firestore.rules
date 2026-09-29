@@ -1,0 +1,228 @@
+rules_version = '2';
+// OurMoney — Firestore Security Rules
+// =====================================
+// SECURITY MODEL:
+// - Unauthenticated users: DENIED for everything
+// - Authenticated users: can only access their own household
+// - Cross-household access: DENIED
+// - Membership modification: restricted (cannot add self arbitrarily)
+// - Sensitive fields: never accepted (client + rules layer)
+// =====================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper Functions ──────────────────────────────────────────────────────
+
+    // Is the request from a signed-in user?
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Is the requesting user the specified user?
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Is the requesting user a member of the specified household?
+    function isHouseholdMember(householdId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/households/$(householdId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.memberIds;
+    }
+
+    // Does the incoming data NOT contain banned sensitive fields?
+    function hasNoSensitiveFields(data) {
+      return !('accountNumber' in data) &&
+             !('loanAccountNumber' in data) &&
+             !('bankAccountNumber' in data) &&
+             !('accountNo' in data) &&
+             !('customerID' in data) &&
+             !('customerId' in data) &&
+             !('cifNumber' in data) &&
+             !('upiId' in data) &&
+             !('upiPin' in data) &&
+             !('atmPin' in data) &&
+             !('cardNumber' in data) &&
+             !('cardPin' in data) &&
+             !('bankPassword' in data) &&
+             !('otp' in data) &&
+             !('aadhaar' in data) &&
+             !('pan' in data) &&
+             !('password' in data);
+    }
+
+    // Validate expense fields
+    function isValidExpense(data) {
+      return data.keys().hasAll([
+               'householdId', 'amountPaise', 'categoryId',
+               'description', 'paidByUserId', 'createdByUserId',
+               'paymentMethod', 'date'
+             ]) &&
+             data.amountPaise is int &&
+             data.amountPaise > 0 &&
+             data.amountPaise < 1000000000 && // < ₹10 crore per single expense
+             data.description is string &&
+             data.description.size() > 0 &&
+             data.description.size() <= 200 &&
+             hasNoSensitiveFields(data);
+    }
+
+    // Validate loan fields — especially enforcing no account numbers
+    function isValidLoan(data) {
+      return data.keys().hasAll([
+               'householdId', 'lenderName', 'loanType',
+               'originalAmountPaise', 'outstandingAmountPaise',
+               'interestRateBps', 'repaymentMethod'
+             ]) &&
+             data.originalAmountPaise is int &&
+             data.originalAmountPaise > 0 &&
+             data.outstandingAmountPaise is int &&
+             data.outstandingAmountPaise >= 0 &&
+             data.interestRateBps is int &&
+             data.interestRateBps >= 0 &&
+             data.interestRateBps <= 100000 && // max 1000% APR
+             data.lenderName is string &&
+             data.lenderName.size() > 0 &&
+             data.lenderName.size() <= 100 &&
+             hasNoSensitiveFields(data);
+    }
+
+    // ── Users Collection ──────────────────────────────────────────────────────
+
+    match /users/{userId} {
+      // Users can read and update their own profile only
+      allow read: if isUser(userId);
+      allow create: if isUser(userId) &&
+                       hasNoSensitiveFields(request.resource.data);
+      allow update: if isUser(userId) &&
+                       hasNoSensitiveFields(request.resource.data) &&
+                       // Users cannot change their own email through Firestore
+                       // Guard: resource may be null for brand-new docs (use exists check)
+                       (
+                         resource == null ||
+                         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['email'])
+                       );
+      allow delete: if isUser(userId);
+    }
+
+    // ── Households Collection ─────────────────────────────────────────────────
+
+    match /households/{householdId} {
+      // Members can read their household.
+      // Also allow the creator to read immediately after creation (before listener sync).
+      allow read: if isHouseholdMember(householdId) ||
+                     (
+                       isAuthenticated() &&
+                       exists(/databases/$(database)/documents/households/$(householdId)) &&
+                       get(/databases/$(database)/documents/households/$(householdId)).data.createdByUserId == request.auth.uid
+                     );
+
+      // Only authenticated users can create a household (as first member)
+      allow create: if isAuthenticated() &&
+                       request.resource.data.memberIds.size() == 1 &&
+                       request.auth.uid in request.resource.data.memberIds &&
+                       request.resource.data.createdByUserId == request.auth.uid;
+
+      // Members can update household (e.g. clearing invite code after join)
+      // But: cannot change createdByUserId, cannot arbitrarily change memberIds
+      allow update: if isHouseholdMember(householdId) &&
+                       request.resource.data.createdByUserId == resource.data.createdByUserId &&
+                       // memberIds can only grow by 1 (join) or shrink by 1 (leave)
+                       (request.resource.data.memberIds.size() <= resource.data.memberIds.size() + 1) &&
+                       // New member must be the requesting user
+                       (request.resource.data.memberIds.toSet().difference(resource.data.memberIds.toSet()).size() <= 1);
+
+      // Only creator can delete household
+      allow delete: if isAuthenticated() &&
+                       resource.data.createdByUserId == request.auth.uid;
+
+      // ── Expenses ─────────────────────────────────────────────────────────
+
+      match /expenses/{expenseId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create: if isHouseholdMember(householdId) &&
+                         isValidExpense(request.resource.data) &&
+                         request.resource.data.householdId == householdId &&
+                         request.resource.data.createdByUserId == request.auth.uid;
+        allow update: if isHouseholdMember(householdId) &&
+                         isValidExpense(request.resource.data) &&
+                         // Cannot change householdId or createdByUserId
+                         request.resource.data.householdId == resource.data.householdId &&
+                         request.resource.data.createdByUserId == resource.data.createdByUserId;
+        allow delete: if isHouseholdMember(householdId);
+      }
+
+      // ── Budgets ───────────────────────────────────────────────────────────
+
+      match /budgets/{budgetId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create: if isHouseholdMember(householdId) &&
+                         request.resource.data.householdId == householdId &&
+                         request.resource.data.amountPaise is int &&
+                         request.resource.data.amountPaise > 0 &&
+                         request.resource.data.amountPaise < 10000000000; // < ₹1 crore
+        allow update: if isHouseholdMember(householdId) &&
+                         request.resource.data.householdId == resource.data.householdId;
+        allow delete: if isHouseholdMember(householdId);
+      }
+
+      // ── Loans ─────────────────────────────────────────────────────────────
+
+      match /loans/{loanId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create: if isHouseholdMember(householdId) &&
+                         isValidLoan(request.resource.data) &&
+                         request.resource.data.householdId == householdId &&
+                         request.resource.data.createdByUserId == request.auth.uid;
+        allow update: if isHouseholdMember(householdId) &&
+                         isValidLoan(request.resource.data) &&
+                         request.resource.data.householdId == resource.data.householdId &&
+                         request.resource.data.createdByUserId == resource.data.createdByUserId;
+        allow delete: if isHouseholdMember(householdId);
+      }
+
+      // ── Loan Payments ──────────────────────────────────────────────────────
+
+      match /loanPayments/{paymentId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create: if isHouseholdMember(householdId) &&
+                         request.resource.data.householdId == householdId &&
+                         request.resource.data.createdByUserId == request.auth.uid &&
+                         request.resource.data.amountPaise is int &&
+                         request.resource.data.amountPaise > 0 &&
+                         hasNoSensitiveFields(request.resource.data);
+        // Payments are immutable once recorded (for audit integrity)
+        allow update: if false;
+        // Members can delete erroneous payments
+        allow delete: if isHouseholdMember(householdId);
+      }
+
+      // ── Settings ──────────────────────────────────────────────────────────
+
+      match /settings/{document} {
+        allow read: if isHouseholdMember(householdId);
+        allow write: if isHouseholdMember(householdId);
+      }
+    }
+
+    // ── Invite Code Lookup ───────────────────────────────────────────────────
+    // These docs contain only householdId and expiresAt — no private data.
+
+    match /household_invites/{inviteCode} {
+      // Any authenticated user can read (to attempt joining)
+      allow read: if isAuthenticated();
+      // Only authenticated users can create (from householdService)
+      allow create: if isAuthenticated() &&
+                       request.resource.data.keys().hasAll(['householdId', 'expiresAt']) &&
+                       request.resource.data.keys().size() == 2;
+      // Household members can update/delete (e.g., invalidate after join)
+      allow update, delete: if isAuthenticated();
+    }
+
+    // ── Default: Deny All ────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

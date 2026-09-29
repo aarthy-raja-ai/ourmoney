@@ -1,0 +1,21 @@
+// OurMoney Firebase Configuration Template
+// ==========================================
+// 1. Go to https://console.firebase.google.com/
+// 2. Create a project (or use existing)
+// 3. Enable Authentication (Email/Password)
+// 4. Enable Firestore Database
+// 5. Add a Web App to get your config
+// 6. Copy this file to firebaseConfig.ts (same directory)
+// 7. Fill in your actual values below
+// ==========================================
+// IMPORTANT: NEVER commit firebaseConfig.ts to git!
+// It is already in .gitignore
+
+export const firebaseConfig = {
+  apiKey: 'YOUR_API_KEY_HERE',
+  authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
+  projectId: 'YOUR_PROJECT_ID',
+  storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+  appId: 'YOUR_APP_ID',
+};
