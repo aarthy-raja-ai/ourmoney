@@ -18,7 +18,7 @@ import {
   Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, auth } from '../config/firebase';
 import type { Loan, CreateLoanInput, UpdateLoanInput } from '../models/loan';
 import type { LoanPayment, CreateLoanPaymentInput } from '../models/loanPayment';
 import { COLLECTIONS, SUBCOLLECTIONS } from './collections';
@@ -54,9 +54,17 @@ export async function addLoan(
 ): Promise<Loan> {
   try {
     validateLoanInput(input as Record<string, unknown>);
+    const cleanInput: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(input)) {
+      if (val !== undefined) {
+        cleanInput[key] = val;
+      }
+    }
+    const createdByUserId = input.createdByUserId ?? auth.currentUser?.uid ?? '';
     const data = {
-      ...input,
+      ...cleanInput,
       householdId,
+      createdByUserId,
       isActive: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -81,12 +89,23 @@ export async function updateLoan(
   updates: UpdateLoanInput,
 ): Promise<void> {
   try {
+    console.log('[LOAN_EDIT_STARTED] Updating loanId:', loanId);
     validateLoanInput(updates as Record<string, unknown>);
+
+    const cleanUpdates: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      if (val !== undefined) {
+        cleanUpdates[key] = val;
+      }
+    }
+
     await updateDoc(
       doc(db, COLLECTIONS.HOUSEHOLDS, householdId, SUBCOLLECTIONS.LOANS, loanId),
-      { ...updates, updatedAt: serverTimestamp() },
+      { ...cleanUpdates, updatedAt: serverTimestamp() },
     );
+    console.log('[LOAN_UPDATE_SUCCESS] Loan updated successfully.');
   } catch (error) {
+    console.log('[LOAN_UPDATE_ERROR]', error);
     if (error instanceof Error && !error.message.includes('Firebase')) throw error;
     throw new Error(toUserFriendlyError(error, 'loan-save'));
   }
@@ -97,10 +116,24 @@ export async function deleteLoan(
   loanId: string,
 ): Promise<void> {
   try {
+    console.log('[LOAN_DELETE_STARTED] Deleting loanId:', loanId);
+
+    // Clean up related loan payment records to avoid orphaned documents
+    try {
+      const paymentsQ = query(paymentsRef(householdId), where('loanId', '==', loanId));
+      const paymentsSnap = await getDocs(paymentsQ);
+      const deletePromises = paymentsSnap.docs.map((pDoc) => deleteDoc(pDoc.ref));
+      await Promise.all(deletePromises);
+    } catch (_err) {
+      // Ignore if no payments exist or payment collection index missing
+    }
+
     await deleteDoc(
       doc(db, COLLECTIONS.HOUSEHOLDS, householdId, SUBCOLLECTIONS.LOANS, loanId),
     );
+    console.log('[LOAN_DELETE_SUCCESS] Loan and related payments deleted successfully.');
   } catch (error) {
+    console.log('[LOAN_DELETE_ERROR]', error);
     throw new Error(toUserFriendlyError(error, 'loan-delete'));
   }
 }
@@ -110,17 +143,21 @@ export function subscribeToLoans(
   callback: (loans: Loan[]) => void,
   onError?: (error: Error) => void,
 ): Unsubscribe {
-  const q = query(
-    loansRef(householdId),
-    where('isActive', '==', true),
-    orderBy('createdAt', 'desc'),
-  );
+  const q = query(loansRef(householdId));
   return onSnapshot(
     q,
     (snap) => {
-      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Loan)));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Loan));
+      list.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() ?? 0;
+        const bTime = b.createdAt?.toMillis?.() ?? 0;
+        return bTime - aTime;
+      });
+      console.log('[LOAN_LIST_REFRESHED] Loaded loans count:', list.length);
+      callback(list);
     },
     (err) => {
+      console.log('[LOAN_FIRESTORE_WRITE_ERROR] subscribeToLoans error:', err);
       onError?.(new Error(toUserFriendlyError(err, 'loan-fetch')));
     },
   );
@@ -141,10 +178,18 @@ export async function recordLoanPayment(
     assertNoSensitiveFields(payment as Record<string, unknown>);
 
     // Record the payment
+    const cleanPayment: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(payment)) {
+      if (val !== undefined) {
+        cleanPayment[key] = val;
+      }
+    }
+    const createdByUserId = payment.createdByUserId ?? payment.paidByUserId ?? auth.currentUser?.uid ?? '';
     const paymentData = {
-      ...payment,
+      ...cleanPayment,
       loanId,
       householdId,
+      createdByUserId,
       createdAt: serverTimestamp(),
     };
     await addDoc(paymentsRef(householdId), paymentData);

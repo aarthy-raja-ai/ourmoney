@@ -34,6 +34,11 @@ export function formatAmount(paise: number): string {
 }
 
 /**
+  * Alias for formatAmount for compatibility.
+  */
+export const formatCurrency = formatAmount;
+
+/**
  * Format a rupee amount with Indian number formatting.
  */
 export function formatRupees(rupees: number): string {

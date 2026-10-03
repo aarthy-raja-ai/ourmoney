@@ -5,7 +5,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useInsights } from '../../src/hooks/useInsights';
 import { ScreenHeader } from '../../src/components/ScreenHeader';

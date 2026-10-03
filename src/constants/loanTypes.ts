@@ -74,6 +74,18 @@ export const LOAN_TYPES_MAP: Record<LoanType, LoanTypeOption> = LOAN_TYPES.reduc
   {} as Record<LoanType, LoanTypeOption>,
 );
 
+export function getLoanTypeById(id: string): LoanTypeOption {
+  return (
+    LOAN_TYPES_MAP[id as LoanType] ?? {
+      id: 'other',
+      label: id || 'Loan',
+      iconName: 'MoreHorizontal',
+      defaultInterestType: 'unknown',
+      defaultRepaymentMethod: 'custom',
+    }
+  );
+}
+
 export interface RepaymentMethodOption {
   id: RepaymentMethod;
   label: string;

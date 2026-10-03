@@ -53,13 +53,13 @@ export default function LoanDetailModal() {
     );
   }
 
-  const loanTypeInfo = getLoanTypeById(loan.type);
+  const loanTypeInfo = getLoanTypeById(loan.loanType);
 
   // Payoff calculations
   const payoffDetails = calculateLoanPayoffDetails(
-    loan.currentBalancePaise,
-    loan.annualInterestRateBps,
-    loan.minimumPaymentPaise ?? loan.monthlyPaymentPaise ?? 0,
+    loan.outstandingAmountPaise,
+    loan.interestRateBps,
+    loan.plannedPaymentPaise,
     loan.repaymentMethod,
   );
 
@@ -67,11 +67,15 @@ export default function LoanDetailModal() {
     if (!householdId || !id) return;
     try {
       setIsDeleting(true);
+      console.log('[LOAN_DELETE_STARTED] Deleting loanId:', id);
       await deleteLoan(householdId, id);
+      console.log('[LOAN_DELETE_SUCCESS] Loan deleted successfully.');
       setShowConfirmDelete(false);
+      Alert.alert('Loan Deleted', 'Loan deleted successfully.');
       router.back();
     } catch (err: any) {
-      Alert.alert('Delete Error', err.message);
+      console.log('[LOAN_DELETE_ERROR]', err?.message || err);
+      Alert.alert('Unable to Delete', 'Unable to delete loan. Please try again.');
     } finally {
       setIsDeleting(false);
     }
@@ -85,9 +89,14 @@ export default function LoanDetailModal() {
           <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Loan Details</Text>
-        <TouchableOpacity onPress={() => setShowConfirmDelete(true)} style={styles.closeButton}>
-          <Ionicons name="trash-outline" size={22} color={theme.colors.danger} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => router.push(`/(modals)/add-loan?id=${loan.id}` as any)} style={styles.closeButton}>
+            <Ionicons name="create-outline" size={22} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowConfirmDelete(true)} style={styles.closeButton}>
+            <Ionicons name="trash-outline" size={22} color={theme.colors.danger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
@@ -95,9 +104,9 @@ export default function LoanDetailModal() {
         <Card style={styles.heroCard}>
           <View style={styles.heroHeader}>
             <View>
-              <Text style={[styles.loanName, { color: theme.colors.textPrimary }]}>{loan.name}</Text>
+              <Text style={[styles.loanName, { color: theme.colors.textPrimary }]}>{loan.lenderName}</Text>
               <Text style={[styles.lender, { color: theme.colors.textSecondary }]}>
-                {loan.lenderName}
+                {loanTypeInfo.label}
               </Text>
             </View>
             <Badge label={loanTypeInfo.label} variant="primary" />
@@ -107,20 +116,20 @@ export default function LoanDetailModal() {
             Outstanding Balance
           </Text>
           <Text style={[styles.balanceAmount, { color: theme.colors.textPrimary }]}>
-            {formatCurrency(loan.currentBalancePaise)}
+            {formatCurrency(loan.outstandingAmountPaise)}
           </Text>
 
           <View style={styles.heroSubGrid}>
             <View>
               <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Interest Rate</Text>
               <Text style={[styles.subValue, { color: theme.colors.textSecondary }]}>
-                {(loan.annualInterestRateBps / 100).toFixed(2)}% p.a.
+                {(loan.interestRateBps / 100).toFixed(2)}% p.a.
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Monthly EMI</Text>
               <Text style={[styles.subValue, { color: theme.colors.textSecondary }]}>
-                {formatCurrency(loan.minimumPaymentPaise ?? loan.monthlyPaymentPaise ?? 0)}
+                {formatCurrency(loan.plannedPaymentPaise)}
               </Text>
             </View>
           </View>
@@ -142,8 +151,8 @@ export default function LoanDetailModal() {
 
         <LoanScenarioCard
           title="Current Repayment Pace"
-          description={`Paying ${formatCurrency(loan.minimumPaymentPaise ?? loan.monthlyPaymentPaise ?? 0)} monthly`}
-          monthlyPaymentPaise={loan.minimumPaymentPaise ?? loan.monthlyPaymentPaise ?? 0}
+          description={`Paying ${formatCurrency(loan.plannedPaymentPaise)} monthly`}
+          monthlyPaymentPaise={loan.plannedPaymentPaise}
           payoffMonths={payoffDetails.estimatedPayoffMonths}
           totalInterestPaise={payoffDetails.estimatedTotalInterestPaise}
           totalPaymentPaise={payoffDetails.estimatedTotalPaymentPaise}
@@ -169,7 +178,7 @@ export default function LoanDetailModal() {
                     {formatCurrency(p.amountPaise)}
                   </Text>
                   <Text style={[styles.paymentType, { color: theme.colors.textSecondary }]}>
-                    {p.paymentType === 'emi' ? 'Regular EMI' : p.paymentType === 'prepayment' ? 'Prepayment' : 'Interest Only'}
+                    {p.paymentType === 'emi' ? 'Regular EMI' : p.paymentType === 'principal' ? 'Principal' : 'Interest Only'}
                   </Text>
                 </View>
 
@@ -178,7 +187,7 @@ export default function LoanDetailModal() {
                     {formatDate(p.date)}
                   </Text>
                   <Text style={[styles.recordedBy, { color: theme.colors.textSecondary }]}>
-                    by {p.paidByUserName}
+                    by {p.paidByUserName ?? 'User'}
                   </Text>
                 </View>
               </View>
@@ -193,7 +202,7 @@ export default function LoanDetailModal() {
       <ConfirmDialog
         visible={showConfirmDelete}
         title="Delete Loan"
-        message={`Delete "${loan.name}" from your household loans?`}
+        message={`Delete "${loan.lenderName}" from your household loans?`}
         confirmLabel="Delete"
         variant="danger"
         onConfirm={handleDeleteLoan}

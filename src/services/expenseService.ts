@@ -19,7 +19,7 @@ import {
   serverTimestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, auth } from '../config/firebase';
 import type { Expense, CreateExpenseInput, UpdateExpenseInput } from '../models/expense';
 import { COLLECTIONS, SUBCOLLECTIONS } from './collections';
 import { toUserFriendlyError } from '../utils/errorMessages';
@@ -36,16 +36,57 @@ export async function addExpense(
 ): Promise<Expense> {
   try {
     assertNoSensitiveFields(input as Record<string, unknown>);
+
+    const cleanData: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(input)) {
+      if (val !== undefined) {
+        cleanData[key] = val;
+      }
+    }
+
+    const createdByUserId = input.createdByUserId ?? input.paidByUserId ?? auth.currentUser?.uid ?? '';
+    const paymentStatus = input.paymentStatus ?? 'paid';
+
     const data = {
-      ...input,
+      ...cleanData,
+      paymentStatus,
       householdId,
+      createdByUserId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
     const ref = await addDoc(expensesRef(householdId), data);
-    return { id: ref.id, ...input, createdAt: Timestamp.now(), updatedAt: Timestamp.now() };
+    return {
+      ...input,
+      paymentStatus,
+      id: ref.id,
+      householdId,
+      createdByUserId: input.createdByUserId ?? input.paidByUserId,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
   } catch (error) {
     if (error instanceof Error && error.name === 'SensitiveFieldError') throw error;
+    throw new Error(toUserFriendlyError(error, 'expense-save'));
+  }
+}
+
+export async function markExpenseSettled(
+  householdId: string,
+  expenseId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    await updateDoc(
+      doc(db, COLLECTIONS.HOUSEHOLDS, householdId, SUBCOLLECTIONS.EXPENSES, expenseId),
+      {
+        paymentStatus: 'paid',
+        settledAt: serverTimestamp(),
+        settledBy: userId,
+        updatedAt: serverTimestamp(),
+      },
+    );
+  } catch (error) {
     throw new Error(toUserFriendlyError(error, 'expense-save'));
   }
 }
@@ -79,6 +120,8 @@ export async function deleteExpense(
     throw new Error(toUserFriendlyError(error, 'expense-delete'));
   }
 }
+
+export const getExpenseById = getExpense;
 
 export async function getExpense(
   householdId: string,

@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Card } from './Card';
 import { Button } from './Button';
-import { formatCurrency, rupeesToPaise, paiseToRupees } from '../utils/currency';
+import { formatCurrency, rupeesToPaise } from '../utils/currency';
 import { calculateDebtFreeTarget } from '../utils/loanCalculations';
 import type { Loan } from '../models/loan';
 
@@ -25,7 +25,7 @@ export const DebtFreeTargetCalculator: React.FC<DebtFreeTargetCalculatorProps> =
     return isNaN(val) || val < 0 ? 0 : rupeesToPaise(val);
   }, [extraMonthlyRupees]);
 
-  const activeLoans = useMemo(() => loans.filter((l) => l.status === 'active'), [loans]);
+  const activeLoans = useMemo(() => loans.filter((l) => l.isActive), [loans]);
 
   const baseResult = useMemo(
     () => calculateDebtFreeTarget(activeLoans, 0, strategy),

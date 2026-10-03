@@ -1,13 +1,11 @@
-// OurMoney — Expense Detail Modal
-// Displays full expense details, household split, timestamp, and delete action.
-
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
+import { useAuth } from '../../src/context/AuthContext';
 import { useHousehold } from '../../src/context/HouseholdContext';
-import { deleteExpense, getExpenseById } from '../../src/services/expenseService';
+import { deleteExpense, getExpenseById, markExpenseSettled } from '../../src/services/expenseService';
 import { CategoryIcon } from '../../src/components/CategoryIcon';
 import { Card } from '../../src/components/Card';
 import { Button } from '../../src/components/Button';
@@ -24,11 +22,14 @@ export default function ExpenseDetailModal() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { householdId } = useHousehold();
+  const { user } = useAuth();
 
   const [expense, setExpense] = useState<Expense | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showConfirmSettle, setShowConfirmSettle] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
 
   useEffect(() => {
     if (!householdId || !id) return;
@@ -58,6 +59,20 @@ export default function ExpenseDetailModal() {
     }
   };
 
+  const handleSettle = async () => {
+    if (!householdId || !id || !user) return;
+    try {
+      setIsSettling(true);
+      await markExpenseSettled(householdId, id, user.uid);
+      setExpense((prev) => (prev ? { ...prev, paymentStatus: 'paid' } : null));
+      setShowConfirmSettle(false);
+    } catch (err: any) {
+      Alert.alert('Settlement Error', err.message);
+    } finally {
+      setIsSettling(false);
+    }
+  };
+
   if (isLoading || !expense) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -68,6 +83,7 @@ export default function ExpenseDetailModal() {
 
   const category = getCategoryById(expense.categoryId);
   const paymentMethod = getPaymentMethodById(expense.paymentMethod);
+  const isCreditPending = expense.paymentStatus === 'credit';
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -106,9 +122,16 @@ export default function ExpenseDetailModal() {
           <View style={[styles.divider, { backgroundColor: theme.colors.borderLight }]} />
 
           <View style={styles.infoRow}>
-            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>Paid By</Text>
-            <Text style={[styles.infoValue, { color: theme.colors.textPrimary }]}>
-              {expense.paidByUserName}
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>
+              Payment Status
+            </Text>
+            <Text
+              style={[
+                styles.infoValue,
+                { color: isCreditPending ? theme.colors.warning : theme.colors.success, fontWeight: '700' },
+              ]}
+            >
+              {isCreditPending ? 'Credit (Pending)' : 'Paid'}
             </Text>
           </View>
 
@@ -133,31 +156,16 @@ export default function ExpenseDetailModal() {
           </View>
         </Card>
 
-        {/* Split Breakdown */}
-        <Card style={styles.card}>
-          <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
-            Household Split
-          </Text>
-          <View style={styles.splitRow}>
-            <View>
-              <Text style={[styles.splitUser, { color: theme.colors.textSecondary }]}>
-                {expense.paidByUserName}'s share
-              </Text>
-              <Text style={[styles.splitAmount, { color: theme.colors.textPrimary }]}>
-                {formatCurrency(expense.userPaidPaise ?? Math.round(expense.amountPaise / 2))}
-              </Text>
-            </View>
-
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={[styles.splitUser, { color: theme.colors.textSecondary }]}>
-                Partner share
-              </Text>
-              <Text style={[styles.splitAmount, { color: theme.colors.textPrimary }]}>
-                {formatCurrency(expense.partnerPaidPaise ?? Math.round(expense.amountPaise / 2))}
-              </Text>
-            </View>
+        {/* Action button for pending credit expense */}
+        {isCreditPending && (
+          <View style={{ marginBottom: 16 }}>
+            <Button
+              title="Mark as Settled"
+              variant="primary"
+              onPress={() => setShowConfirmSettle(true)}
+            />
           </View>
-        </Card>
+        )}
 
         {/* Notes if any */}
         {expense.notes && (
@@ -169,6 +177,18 @@ export default function ExpenseDetailModal() {
           </Card>
         )}
       </ScrollView>
+
+      {/* Confirm Settle Dialog */}
+      <ConfirmDialog
+        visible={showConfirmSettle}
+        title={`Mark ${formatCurrency(expense.amountPaise)} as settled?`}
+        message={`"${expense.description}" status will be updated from Credit to Paid.`}
+        confirmLabel="Mark as Settled"
+        cancelLabel="Cancel"
+        onConfirm={handleSettle}
+        onCancel={() => setShowConfirmSettle(false)}
+        isLoading={isSettling}
+      />
 
       {/* Confirm Delete Dialog */}
       <ConfirmDialog

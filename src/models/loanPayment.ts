@@ -19,10 +19,16 @@ export interface LoanPayment {
   date: Timestamp;
   notes?: string;
   createdByUserId: string;
+  paidByUserId?: string;
+  paidByUserName?: string;
   createdAt: Timestamp;
 }
 
-export type CreateLoanPaymentInput = Omit<LoanPayment, 'id' | 'createdAt'>;
+export type CreateLoanPaymentInput = Omit<LoanPayment, 'id' | 'createdAt' | 'householdId' | 'loanId' | 'createdByUserId'> & {
+  householdId?: string;
+  loanId?: string;
+  createdByUserId?: string;
+};
 
 export interface LoanPaymentFormValues {
   amountRupees: string;

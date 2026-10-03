@@ -49,7 +49,7 @@ export default function ManageBudgetsModal() {
         if (existing) await deleteBudget(householdId, existing.id);
       } else {
         await setBudget(householdId, {
-          categoryId: editingCategoryId,
+          categoryId: editingCategoryId as any,
           month: currentMonth,
           amountPaise: rupeesToPaise(val),
         });

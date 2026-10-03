@@ -8,6 +8,8 @@ import {
 import type { CategoryId } from '../constants/categories';
 import { getCategoryById } from '../constants/categories';
 
+import { useTheme } from '../context/ThemeContext';
+
 const ICON_MAP: Record<string, LucideIcon> = {
   UtensilsCrossed,
   ShoppingCart,
@@ -23,28 +25,38 @@ const ICON_MAP: Record<string, LucideIcon> = {
   User,
   Users,
   CreditCard,
-  Bag: ShoppingCart, // fallback
+  Bag: ShoppingCart,
 };
 
-interface CategoryIconProps {
-  categoryId: CategoryId;
+export interface CategoryIconProps {
+  categoryId?: CategoryId;
+  category?: any;
   size?: number;
   iconSize?: number;
   showBackground?: boolean;
+  color?: string;
+  style?: any;
 }
 
 export function CategoryIcon({
   categoryId,
+  category: categoryProp,
   size = 40,
   iconSize = 20,
   showBackground = true,
+  color: colorProp,
+  style,
 }: CategoryIconProps) {
-  const category = getCategoryById(categoryId);
-  const IconComponent = ICON_MAP[category.iconName] ?? MoreHorizontal;
+  const { isDark } = useTheme();
+  const categoryInfo = categoryProp ?? (categoryId ? getCategoryById(categoryId) : getCategoryById('other'));
+  const IconComponent = ICON_MAP[categoryInfo.iconName] ?? MoreHorizontal;
+  const iconColor = colorProp ?? categoryInfo.color;
 
   if (!showBackground) {
-    return <IconComponent size={iconSize} color={category.color} />;
+    return <IconComponent size={iconSize} color={iconColor} />;
   }
+
+  const backgroundColor = isDark ? `${iconColor}26` : categoryInfo.bgColor;
 
   return (
     <View
@@ -54,11 +66,12 @@ export function CategoryIcon({
           width: size,
           height: size,
           borderRadius: size / 2.5,
-          backgroundColor: category.bgColor,
+          backgroundColor,
         },
+        style,
       ]}
     >
-      <IconComponent size={iconSize} color={category.color} />
+      <IconComponent size={iconSize} color={iconColor} />
     </View>
   );
 }

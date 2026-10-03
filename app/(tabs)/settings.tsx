@@ -1,5 +1,5 @@
 // OurMoney — Settings Tab Screen
-// Household preferences, security & privacy controls, partner sync state, theme mode.
+// Workspace management, app preferences, Privacy & Data controls, account deletion, and sign out.
 
 import React, { useState } from 'react';
 import {
@@ -12,7 +12,15 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  Home,
+  Moon,
+  Wallet,
+  ShieldCheck,
+  Trash2,
+  ChevronRight,
+  FileText,
+} from 'lucide-react-native';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useAuth } from '../../src/context/AuthContext';
 import { useHousehold } from '../../src/context/HouseholdContext';
@@ -24,7 +32,7 @@ import { Badge } from '../../src/components/Badge';
 export default function SettingsScreen() {
   const { theme, colorScheme, setColorScheme } = useTheme();
   const { user, userProfile, signOut } = useAuth();
-  const { household, partner, isSolo } = useHousehold();
+  const { household: _household, partner, isSolo } = useHousehold();
   const router = useRouter();
 
   const [isSignOutLoading, setIsSignOutLoading] = useState(false);
@@ -43,7 +51,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScreenHeader title="Settings & Privacy" subtitle="Workspace, account & app preferences" />
+      <ScreenHeader title="Settings & Privacy" subtitle="Workspace, account & data preferences" />
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         {/* Profile Card */}
@@ -64,7 +72,7 @@ export default function SettingsScreen() {
               </Text>
             </View>
 
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.textTertiary} />
+            <ChevronRight size={20} color={theme.colors.textTertiary} />
           </View>
         </Card>
 
@@ -74,7 +82,7 @@ export default function SettingsScreen() {
         </Text>
         <Card style={styles.card} onPress={() => router.push('/(settings)/household' as any)}>
           <View style={styles.settingItem}>
-            <Ionicons name="home-outline" size={22} color={theme.colors.primary} />
+            <Home size={22} color={theme.colors.primary} />
             <View style={styles.settingTextContainer}>
               <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>
                 {isSolo ? 'Personal Workspace' : 'Shared Household'}
@@ -95,14 +103,14 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
-        {/* App Customization Section */}
+        {/* Preferences */}
         <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
           Preferences
         </Text>
         <Card style={styles.card}>
           {/* Dark Mode Toggle */}
           <View style={styles.settingItem}>
-            <Ionicons name="moon-outline" size={22} color={theme.colors.primary} />
+            <Moon size={22} color={theme.colors.primary} />
             <View style={styles.settingTextContainer}>
               <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>
                 Dark Mode
@@ -125,7 +133,7 @@ export default function SettingsScreen() {
             style={styles.settingItem}
             onPress={() => router.push('/(modals)/manage-budgets')}
           >
-            <Ionicons name="wallet-outline" size={22} color={theme.colors.primary} />
+            <Wallet size={22} color={theme.colors.primary} />
             <View style={styles.settingTextContainer}>
               <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>
                 Monthly Budgets
@@ -134,29 +142,68 @@ export default function SettingsScreen() {
                 Set category spending targets
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.textTertiary} />
+            <ChevronRight size={20} color={theme.colors.textTertiary} />
           </TouchableOpacity>
         </Card>
 
-        {/* Privacy & Security */}
+        {/* Privacy & Data Section */}
         <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
-          Privacy & Security
+          Privacy & Data
         </Text>
         <Card style={styles.card}>
+          {/* Privacy Policy */}
           <TouchableOpacity
             style={styles.settingItem}
             onPress={() => router.push('/(modals)/privacy-policy')}
           >
-            <Ionicons name="shield-checkmark-outline" size={22} color={theme.colors.success} />
+            <FileText size={22} color={theme.colors.primary} />
             <View style={styles.settingTextContainer}>
               <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>
-                Privacy Architecture
+                Privacy Policy
               </Text>
               <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary }]}>
-                Zero bank credentials, strict isolation
+                Full data practices disclosure
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.textTertiary} />
+            <ChevronRight size={20} color={theme.colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: theme.colors.borderLight }]} />
+
+          {/* Data & Security */}
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => router.push('/(settings)/privacy')}
+          >
+            <ShieldCheck size={22} color={theme.colors.success} />
+            <View style={styles.settingTextContainer}>
+              <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>
+                Data & Security
+              </Text>
+              <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary }]}>
+                Zero bank credentials & server isolation
+              </Text>
+            </View>
+            <ChevronRight size={20} color={theme.colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: theme.colors.borderLight }]} />
+
+          {/* Delete Account */}
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => router.push('/(settings)/delete-account' as any)}
+          >
+            <Trash2 size={22} color={theme.colors.danger} />
+            <View style={styles.settingTextContainer}>
+              <Text style={[styles.settingTitle, { color: theme.colors.danger }]}>
+                Delete Account
+              </Text>
+              <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary }]}>
+                Permanently erase account & profile
+              </Text>
+            </View>
+            <ChevronRight size={20} color={theme.colors.textTertiary} />
           </TouchableOpacity>
         </Card>
 
@@ -175,23 +222,11 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  card: {
-    padding: 16,
-    marginBottom: 16,
-  },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  container: { flex: 1 },
+  scroll: { flex: 1 },
+  content: { padding: 16 },
+  card: { padding: 16, marginBottom: 16 },
+  profileRow: { flexDirection: 'row', alignItems: 'center' },
   avatar: {
     width: 48,
     height: 48,
@@ -199,20 +234,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarText: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  profileName: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  profileEmail: {
-    fontSize: 13,
-  },
+  avatarText: { color: '#FFF', fontSize: 20, fontWeight: '700' },
+  profileName: { fontSize: 16, fontWeight: '700' },
+  profileEmail: { fontSize: 13 },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -224,19 +250,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
   },
-  settingTextContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  settingTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  settingSubtitle: {
-    fontSize: 12,
-  },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-  },
+  settingTextContainer: { flex: 1, marginLeft: 12 },
+  settingTitle: { fontSize: 15, fontWeight: '600' },
+  settingSubtitle: { fontSize: 12 },
+  divider: { height: 1, marginVertical: 12 },
 });

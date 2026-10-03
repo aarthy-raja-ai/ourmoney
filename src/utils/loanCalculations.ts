@@ -211,11 +211,6 @@ export function calculateLoan(
   if (repaymentMethod === 'interest_only') {
     const periodsPerYear = getPeriodsPerYear(repaymentFrequency);
     const periodMonths = periodsPerYear > 0 ? 12 / periodsPerYear : 12;
-    const periodInterest = calculatePeriodInterest(
-      outstandingAmountPaise,
-      interestRateBps,
-      periodMonths,
-    );
     return {
       estimatedPayoffMonths: null,
       estimatedTotalInterestPaise: null,
@@ -255,6 +250,21 @@ export function calculateLoan(
     disclaimer: STANDARD_DISCLAIMER,
   };
 }
+
+export const calculateLoanPayoffDetails = (
+  outstandingAmountPaise: number,
+  interestRateBps: number,
+  plannedPaymentPaise: number,
+  repaymentMethod: RepaymentMethod = 'emi',
+) =>
+  calculateLoan({
+    outstandingAmountPaise,
+    interestRateBps,
+    interestType: 'reducing_balance',
+    repaymentMethod,
+    repaymentFrequency: 'monthly',
+    plannedPaymentPaise,
+  });
 
 /**
  * Calculate scenario comparison: current vs increased payment.
@@ -341,3 +351,121 @@ export function formatPayoffTimeline(months: number | null): string {
   if (remainingMonths === 0) return `${years} year${years === 1 ? '' : 's'}`;
   return `${years} year${years === 1 ? '' : 's'} ${remainingMonths} month${remainingMonths === 1 ? '' : 's'}`;
 }
+
+export interface DebtFreeTargetResult {
+  totalPayoffMonths: number;
+  estimatedMonthsToDebtFree: number | null;
+  totalInterestPaise: number;
+  estimatedTotalInterestPaise: number | null;
+  totalPaymentPaise: number;
+  payoffDate: Date;
+}
+
+export function calculateDebtFreeTarget(
+  loans: Loan[],
+  extraPaymentPaise: number = 0,
+  _strategy: 'avalanche' | 'snowball' = 'avalanche',
+): DebtFreeTargetResult {
+  if (!loans.length) {
+    return {
+      totalPayoffMonths: 0,
+      estimatedMonthsToDebtFree: 0,
+      totalInterestPaise: 0,
+      estimatedTotalInterestPaise: 0,
+      totalPaymentPaise: 0,
+      payoffDate: new Date(),
+    };
+  }
+
+  let totalBalance = loans.reduce((sum, l) => sum + (l.outstandingAmountPaise || 0), 0);
+  let totalInterest = 0;
+  let months = 0;
+
+  while (totalBalance > 0 && months < 600) {
+    months++;
+    let monthInterest = 0;
+    loans.forEach((loan) => {
+      const monthlyRate = (loan.interestRateBps || 0) / 10000 / 12;
+      monthInterest += Math.round((loan.outstandingAmountPaise || 0) * monthlyRate);
+    });
+    totalInterest += monthInterest;
+
+    const minPayments = loans.reduce((sum, l) => sum + (l.plannedPaymentPaise || 0), 0);
+    const totalPay = minPayments + extraPaymentPaise;
+    const principalPaid = totalPay - monthInterest;
+
+    if (principalPaid <= 0) break;
+    totalBalance -= principalPaid;
+  }
+
+  const payoffDate = new Date();
+  payoffDate.setMonth(payoffDate.getMonth() + months);
+
+  const interestVal = Math.max(0, totalInterest);
+
+  return {
+    totalPayoffMonths: months,
+    estimatedMonthsToDebtFree: months,
+    totalInterestPaise: interestVal,
+    estimatedTotalInterestPaise: interestVal,
+    totalPaymentPaise: loans.reduce((sum, l) => sum + (l.outstandingAmountPaise || 0), 0) + interestVal,
+    payoffDate,
+  };
+}
+
+export interface PayoffScenarioItem {
+  title: string;
+  description: string;
+  monthlyPaymentPaise: number;
+  payoffMonths: number | null;
+  totalInterestPaise: number | null;
+  totalPaymentPaise: number | null;
+  interestSavedPaise?: number;
+  monthsSaved?: number;
+}
+
+export function calculatePayoffScenarios(
+  outstandingPaise: number,
+  interestRateBps: number,
+  plannedPaymentPaise: number,
+  method: RepaymentMethod = 'emi',
+): PayoffScenarioItem[] {
+  const base = calculateScenario(outstandingPaise, interestRateBps, plannedPaymentPaise, method);
+  const extra2k = calculateScenario(outstandingPaise, interestRateBps, plannedPaymentPaise + 200000, method);
+  const extra5k = calculateScenario(outstandingPaise, interestRateBps, plannedPaymentPaise + 500000, method);
+
+  const baseInterest = base.estimatedTotalInterestPaise ?? 0;
+  const baseMonths = base.estimatedPayoffMonths ?? 0;
+
+  return [
+    {
+      title: 'Current Plan',
+      description: 'Minimum / scheduled monthly payment',
+      monthlyPaymentPaise: plannedPaymentPaise,
+      payoffMonths: base.estimatedPayoffMonths,
+      totalInterestPaise: base.estimatedTotalInterestPaise,
+      totalPaymentPaise: base.estimatedTotalPaymentPaise,
+    },
+    {
+      title: '+ ₹2,000 / month',
+      description: 'Pay an extra ₹2,000 every month towards principal',
+      monthlyPaymentPaise: plannedPaymentPaise + 200000,
+      payoffMonths: extra2k.estimatedPayoffMonths,
+      totalInterestPaise: extra2k.estimatedTotalInterestPaise,
+      totalPaymentPaise: extra2k.estimatedTotalPaymentPaise,
+      interestSavedPaise: Math.max(0, baseInterest - (extra2k.estimatedTotalInterestPaise ?? 0)),
+      monthsSaved: Math.max(0, baseMonths - (extra2k.estimatedPayoffMonths ?? 0)),
+    },
+    {
+      title: '+ ₹5,000 / month',
+      description: 'Pay an extra ₹5,000 every month towards principal',
+      monthlyPaymentPaise: plannedPaymentPaise + 500000,
+      payoffMonths: extra5k.estimatedPayoffMonths,
+      totalInterestPaise: extra5k.estimatedTotalInterestPaise,
+      totalPaymentPaise: extra5k.estimatedTotalPaymentPaise,
+      interestSavedPaise: Math.max(0, baseInterest - (extra5k.estimatedTotalInterestPaise ?? 0)),
+      monthsSaved: Math.max(0, baseMonths - (extra5k.estimatedPayoffMonths ?? 0)),
+    },
+  ];
+}
+

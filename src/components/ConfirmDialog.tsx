@@ -3,16 +3,18 @@ import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { Button } from './Button';
 
-interface ConfirmDialogProps {
+export interface ConfirmDialogProps {
   visible: boolean;
   title: string;
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
   isDestructive?: boolean;
+  variant?: string;
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
+  loading?: boolean;
 }
 
 export function ConfirmDialog({
@@ -22,11 +24,15 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   isDestructive = false,
+  variant,
   onConfirm,
   onCancel,
   isLoading = false,
+  loading = false,
 }: ConfirmDialogProps) {
   const { theme } = useTheme();
+  const showLoading = isLoading || loading;
+  const isDanger = isDestructive || variant === 'danger';
 
   return (
     <Modal
@@ -46,7 +52,7 @@ export function ConfirmDialog({
               ...theme.shadow.lg,
             },
           ]}
-          accessibilityRole="alertdialog"
+          accessibilityRole="alert"
           accessibilityLabel={title}
         >
           <Text style={[styles.title, { color: theme.colors.textPrimary, fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold }]}>
@@ -56,13 +62,13 @@ export function ConfirmDialog({
             {message}
           </Text>
           <View style={styles.actions}>
-            <Button title={cancelLabel} onPress={onCancel} variant="ghost" style={styles.btn} disabled={isLoading} />
+            <Button title={cancelLabel} onPress={onCancel} variant="ghost" style={styles.btn} disabled={showLoading} />
             <Button
               title={confirmLabel}
               onPress={onConfirm}
-              variant={isDestructive ? 'danger' : 'primary'}
+              variant={isDanger ? 'danger' : 'primary'}
               style={styles.btn}
-              isLoading={isLoading}
+              isLoading={showLoading}
             />
           </View>
         </View>

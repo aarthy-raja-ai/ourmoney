@@ -15,7 +15,10 @@ export interface Budget {
   updatedAt: Timestamp;
 }
 
-export type CreateBudgetInput = Omit<Budget, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreateBudgetInput = Omit<Budget, 'id' | 'createdAt' | 'updatedAt' | 'householdId' | 'createdByUserId'> & {
+  householdId?: string;
+  createdByUserId?: string;
+};
 export type UpdateBudgetInput = Pick<Budget, 'amountPaise'>;
 
 export type BudgetStatus = 'normal' | 'heads-up' | 'almost' | 'exceeded';

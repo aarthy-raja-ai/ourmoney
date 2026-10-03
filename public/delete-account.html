@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete Your OurMoney Account</title>
+  <style>
+    :root {
+      --bg: #060E1E;
+      --card-bg: #0F1D35;
+      --border: #253352;
+      --primary: #5B7BF3;
+      --primary-light: rgba(91, 123, 243, 0.15);
+      --danger: #F43F5E;
+      --danger-light: rgba(244, 63, 94, 0.15);
+      --text: #F8F9FC;
+      --subtext: #A8B3C8;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    .navbar {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background: var(--primary);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      color: #ffffff;
+    }
+    .brand-name {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
+    .nav-link {
+      color: var(--subtext);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: var(--primary);
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 32px 20px 60px 20px;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .badge-danger {
+      display: inline-block;
+      background-color: var(--danger-light);
+      color: var(--danger);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin: 0 0 10px 0;
+      letter-spacing: -0.8px;
+    }
+    .subtitle {
+      color: var(--subtext);
+      font-size: 15px;
+    }
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 0;
+      margin-bottom: 12px;
+      color: var(--primary);
+    }
+    p {
+      font-size: 14px;
+      color: var(--subtext);
+      margin: 0 0 12px 0;
+    }
+    p:last-child {
+      margin-bottom: 0;
+    }
+    ol, ul {
+      padding-left: 20px;
+      margin: 0 0 12px 0;
+    }
+    li {
+      font-size: 14px;
+      color: var(--subtext);
+      margin-bottom: 6px;
+    }
+    strong {
+      color: var(--text);
+    }
+    .contact-box {
+      background: var(--primary-light);
+      border: 1px solid rgba(91, 123, 243, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+    .contact-box p {
+      color: var(--text);
+      margin: 0;
+      font-size: 14px;
+    }
+    .footer {
+      text-align: center;
+      font-size: 13px;
+      color: var(--subtext);
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+    .footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    @media (max-width: 600px) {
+      .navbar { padding: 12px 16px; }
+      .container { padding: 20px 16px 40px 16px; }
+      h1 { font-size: 24px; }
+      .card { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <a href="privacy-policy.html" class="brand">
+      <div class="brand-logo">OM</div>
+      <span class="brand-name">OurMoney</span>
+    </a>
+    <div class="nav-links">
+      <a href="privacy-policy.html" class="nav-link">Privacy Policy</a>
+      <a href="delete-account.html" class="nav-link active">Account Deletion</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="hero">
+      <div class="badge-danger">User Data Rights</div>
+      <h1>Delete Your OurMoney Account</h1>
+      <div class="subtitle">Instructions and options for permanently deleting your account and user data</div>
+    </div>
+
+    <div class="card">
+      <h2>Method 1: Immediate In-App Account Deletion (Recommended)</h2>
+      <p>If you have access to the OurMoney mobile application on your device:</p>
+      <ol>
+        <li>Open the <strong>OurMoney</strong> app and sign in to your account.</li>
+        <li>Tap the <strong>Settings</strong> tab in the bottom navigation bar.</li>
+        <li>Under the <strong>Privacy & Data</strong> section, tap <strong>Delete Account</strong>.</li>
+        <li>Read the account deletion warning screen detailing the consequences.</li>
+        <li>Tap <strong>Permanently Delete My Account</strong> and confirm in the dialog.</li>
+      </ol>
+      <p>Your login credentials, authentication profile, and user document will be permanently deleted immediately from Firebase Authentication and Cloud Firestore servers.</p>
+    </div>
+
+    <div class="card">
+      <h2>Method 2: External Web / Email Deletion Request</h2>
+      <p>If you no longer have access to the mobile application or device, you can submit a manual account deletion request directly to our developer team:</p>
+      
+      <div class="contact-box">
+        <p>Send an email to <strong>aarthyraja9976@gmail.com</strong> or <strong>support@ourmoney.app</strong> with the subject line <strong>"Account Deletion Request"</strong>.</p>
+      </div>
+
+      <p style="margin-top: 14px;">Please include the following information in your request:</p>
+      <ul>
+        <li>The <strong>Email Address</strong> registered with your OurMoney account.</li>
+        <li>Your <strong>Display Name</strong> (optional, to help verify identity).</li>
+      </ul>
+      <p>Our developer support team will verify your request and permanently erase your account credentials and user profile within 7 business days.</p>
+    </div>
+
+    <div class="card">
+      <h2>What Happens When Your Account Is Deleted</h2>
+      <ul>
+        <li><strong>Authentication Credentials:</strong> Your email address, password hash, user ID, and Auth record are permanently deleted from Firebase Authentication.</li>
+        <li><strong>User Profile:</strong> Your user document (`users/{userId}`) in Cloud Firestore is erased.</li>
+        <li><strong>Solo Household Workspace:</strong> If you are in a solo workspace with no other members, your household document and associated expenses, budgets, loans, and pending items are permanently deleted.</li>
+        <li><strong>Shared Household Workspace:</strong> Your membership is severed (`memberIds` array updated). If you created the shared household, workspace ownership is transferred to your remaining partner so their access to shared household accounting history is preserved.</li>
+      </ul>
+    </div>
+
+    <div class="footer">
+      &copy; 2026 OurMoney. All rights reserved. • <a href="privacy-policy.html">Privacy Policy</a>
+    </div>
+  </div>
+</body>
+</html>

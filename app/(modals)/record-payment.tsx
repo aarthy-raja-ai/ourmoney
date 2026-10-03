@@ -16,6 +16,8 @@ import { rupeesToPaise, formatCurrency, paiseToRupees } from '../../src/utils/cu
 import { getCurrentDateString } from '../../src/utils/dateUtils';
 import type { LoanPaymentType } from '../../src/models/loanPayment';
 
+import { Timestamp } from 'firebase/firestore';
+
 export default function RecordPaymentModal() {
   const { theme } = useTheme();
   const router = useRouter();
@@ -27,10 +29,10 @@ export default function RecordPaymentModal() {
   const loan = loans.find((l) => l.id === id);
 
   const [amountRupees, setAmountRupees] = useState(
-    loan ? paiseToRupees(loan.minimumPaymentPaise ?? loan.monthlyPaymentPaise ?? 0).toString() : '',
+    loan ? paiseToRupees(loan.plannedPaymentPaise || 0).toString() : '',
   );
   const [paymentType, setPaymentType] = useState<LoanPaymentType>('emi');
-  const [date, setDate] = useState(getCurrentDateString());
+  const [date, _setDate] = useState(getCurrentDateString());
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,10 +50,10 @@ export default function RecordPaymentModal() {
 
     try {
       setIsLoading(true);
-      await recordLoanPayment(householdId, loan.id, loan.currentBalancePaise, {
+      await recordLoanPayment(householdId, loan.id, loan.outstandingAmountPaise, {
         amountPaise: paise,
         paymentType,
-        date,
+        date: Timestamp.fromDate(new Date(date)),
         paidByUserId: user.uid,
         paidByUserName: userProfile?.displayName ?? 'Me',
         notes: notes.trim() || undefined,
@@ -78,9 +80,9 @@ export default function RecordPaymentModal() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <View style={[styles.infoBanner, { backgroundColor: theme.colors.surfaceElevated }]}>
-          <Text style={[styles.loanTitle, { color: theme.colors.textPrimary }]}>{loan.name}</Text>
+          <Text style={[styles.loanTitle, { color: theme.colors.textPrimary }]}>{loan.lenderName}</Text>
           <Text style={[styles.outstandingText, { color: theme.colors.textSecondary }]}>
-            Current Balance: {formatCurrency(loan.currentBalancePaise)}
+            Current Balance: {formatCurrency(loan.outstandingAmountPaise)}
           </Text>
         </View>
 

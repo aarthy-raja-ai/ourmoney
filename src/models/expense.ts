@@ -13,17 +13,29 @@ export interface Expense {
   categoryId: CategoryId;
   description: string;
   paidByUserId: string;
+  paidByUserName?: string;
   createdByUserId: string;
   paymentMethod: PaymentMethodId;
+  paymentStatus?: 'paid' | 'credit';
+  settledAt?: Timestamp | null;
+  settledBy?: string | null;
   date: Timestamp;
   notes?: string;
+  splitRatio?: string;
+  userPaidPaise?: number;
+  partnerPaidPaise?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-export type CreateExpenseInput = Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>;
+export type PaymentMethod = PaymentMethodId;
+
+export type CreateExpenseInput = Omit<Expense, 'id' | 'createdAt' | 'updatedAt' | 'householdId' | 'createdByUserId'> & {
+  householdId?: string;
+  createdByUserId?: string;
+};
 export type UpdateExpenseInput = Partial<
-  Pick<Expense, 'amountPaise' | 'categoryId' | 'description' | 'paidByUserId' | 'paymentMethod' | 'date' | 'notes'>
+  Pick<Expense, 'amountPaise' | 'categoryId' | 'description' | 'paidByUserId' | 'paymentMethod' | 'paymentStatus' | 'settledAt' | 'settledBy' | 'date' | 'notes'>
 >;
 
 // For UI forms — uses rupees (number) before conversion to paise
@@ -33,6 +45,7 @@ export interface ExpenseFormValues {
   description: string;
   paidByUserId: string;
   paymentMethod: PaymentMethodId;
+  paymentStatus: 'paid' | 'credit';
   date: Date;
   notes: string;
 }

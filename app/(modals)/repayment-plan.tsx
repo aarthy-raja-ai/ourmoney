@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useLoans } from '../../src/hooks/useLoans';
 import { LoanScenarioCard } from '../../src/components/LoanScenarioCard';
-import { calculateLoanPayoffDetails, calculatePayoffScenarios } from '../../src/utils/loanCalculations';
+import { calculatePayoffScenarios } from '../../src/utils/loanCalculations';
 
 export default function RepaymentPlanModal() {
   const { theme } = useTheme();
@@ -21,9 +21,9 @@ export default function RepaymentPlanModal() {
   if (!loan) return null;
 
   const scenarios = calculatePayoffScenarios(
-    loan.currentBalancePaise,
-    loan.annualInterestRateBps,
-    loan.minimumPaymentPaise ?? loan.monthlyPaymentPaise ?? 0,
+    loan.outstandingAmountPaise,
+    loan.interestRateBps,
+    loan.plannedPaymentPaise,
     loan.repaymentMethod,
   );
 
@@ -40,7 +40,7 @@ export default function RepaymentPlanModal() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-          Compare payoff speed and total interest saved for <Text style={{ fontWeight: '700' }}>{loan.name}</Text>.
+          Compare payoff speed and total interest saved for <Text style={{ fontWeight: '700' }}>{loan.lenderName}</Text>.
         </Text>
 
         {scenarios.map((sc, index) => (

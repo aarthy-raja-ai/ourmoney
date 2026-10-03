@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useAuth } from '../../src/context/AuthContext';
@@ -22,37 +22,63 @@ import { addExpense } from '../../src/services/expenseService';
 import { evaluateExpenseReflection, SpendingReflectionResult } from '../../src/services/spendingInsightsService';
 import { Input } from '../../src/components/Input';
 import { Button } from '../../src/components/Button';
+import { CategoryIcon } from '../../src/components/CategoryIcon';
 import { SpendingReflectionModal } from '../../src/components/SpendingReflectionModal';
 import { CATEGORIES, getCategoryById } from '../../src/constants/categories';
 import { PAYMENT_METHODS } from '../../src/constants/paymentMethods';
-import { rupeesToPaise, formatCurrency } from '../../src/utils/currency';
+import { rupeesToPaise } from '../../src/utils/currency';
 import { getCurrentDateString, getCurrentMonth } from '../../src/utils/dateUtils';
 import type { PaymentMethod } from '../../src/models/expense';
+import {
+  Banknote,
+  Smartphone,
+  CreditCard,
+  ArrowLeftRight,
+  MoreHorizontal,
+  Check,
+  Clock,
+  type LucideIcon,
+} from 'lucide-react-native';
+
+const PAYMENT_ICON_MAP: Record<string, LucideIcon> = {
+  Banknote,
+  Smartphone,
+  CreditCard,
+  ArrowLeftRight,
+  MoreHorizontal,
+};
+
+import { Timestamp } from 'firebase/firestore';
+import type { CategoryId } from '../../src/constants/categories';
 
 export default function AddExpenseModal() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const router = useRouter();
   const { user, userProfile } = useAuth();
-  const { householdId, partner, isSolo } = useHousehold();
+  const { householdId } = useHousehold();
+
+  // Theme-aware colors strictly scoped to the transaction entry form inputs
+  const formInputTextColor = isDark ? '#FFFFFF' : theme.colors.textPrimary;
+  const formPlaceholderTextColor = isDark ? '#6C7D93' : theme.colors.textTertiary;
+  const formCursorColor = isDark ? '#5B7BF3' : theme.colors.primary;
 
   const currentMonth = getCurrentMonth();
   const { expenses } = useExpenses({ month: currentMonth });
-  const { budgets } = useBudgets(currentMonth);
+  const { budgets: _budgets } = useBudgets(currentMonth);
 
   const [amountRupees, setAmountRupees] = useState('');
   const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState('groceries');
+  const [categoryId, setCategoryId] = useState<CategoryId>('groceries');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'credit'>('paid');
   const [notes, setNotes] = useState('');
-  const [date, setDate] = useState(getCurrentDateString());
-  const [splitRatio, setSplitRatio] = useState<'equal' | '100_user' | '100_partner'>('equal');
+  const [date, _setDate] = useState(getCurrentDateString());
 
   const [isLoading, setIsLoading] = useState(false);
   const [reflectionResult, setReflectionResult] = useState<SpendingReflectionResult | null>(null);
   const [showReflectionModal, setShowReflectionModal] = useState(false);
 
   const parsedAmountPaise = rupeesToPaise(parseFloat(amountRupees) || 0);
-  const partnerName = partner?.displayName ?? 'Partner';
 
   const handleAttemptSave = () => {
     if (!amountRupees || parsedAmountPaise <= 0) {
@@ -69,15 +95,18 @@ export default function AddExpenseModal() {
     }
 
     // Evaluate smart reflection insights
+    const currentCatSpent = expenses
+      .filter((e) => e.categoryId === categoryId)
+      .reduce((sum, e) => sum + e.amountPaise, 0);
+
     const reflection = evaluateExpenseReflection({
-      newExpensePaise: parsedAmountPaise,
+      amountPaise: parsedAmountPaise,
       categoryId,
-      monthExpenses: expenses,
-      budgets,
-      currentUserId: user.uid,
+      currentCategorySpentPaise: currentCatSpent,
+      budgetPaise: null,
     });
 
-    if (reflection.shouldReflect) {
+    if (reflection !== null) {
       setReflectionResult(reflection);
       setShowReflectionModal(true);
     } else {
@@ -91,34 +120,27 @@ export default function AddExpenseModal() {
     try {
       setIsLoading(true);
 
-      const userPaidPaise =
-        splitRatio === 'equal'
-          ? Math.round(parsedAmountPaise / 2)
-          : splitRatio === '100_user'
-          ? parsedAmountPaise
-          : 0;
-
-      const partnerPaidPaise = parsedAmountPaise - userPaidPaise;
-
-      await addExpense(householdId, {
+      const saveTask = addExpense(householdId, {
         amountPaise: parsedAmountPaise,
         description: description.trim(),
         categoryId,
         paidByUserId: user.uid,
         paidByUserName: userProfile?.displayName ?? 'Me',
         paymentMethod,
-        date,
+        paymentStatus,
+        date: Timestamp.fromDate(new Date(date)),
         notes: notes.trim() || undefined,
-        splitRatio: splitRatio === 'equal' ? '50/50' : 'custom',
-        userPaidPaise,
-        partnerPaidPaise,
       });
 
       setShowReflectionModal(false);
       router.back();
+
+      saveTask.catch((err: any) => {
+        console.error('[AddExpense] Background save error:', err);
+        Alert.alert('Save Issue', err.message);
+      });
     } catch (err: any) {
       Alert.alert('Failed to Save', err.message);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -135,7 +157,7 @@ export default function AddExpenseModal() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {/* Amount Input */}
+        {/* 1. Amount Input */}
         <View style={[styles.amountCard, { backgroundColor: theme.colors.surfaceElevated }]}>
           <Text style={[styles.amountLabel, { color: theme.colors.textSecondary }]}>Amount</Text>
           <View style={styles.amountInputRow}>
@@ -144,23 +166,30 @@ export default function AddExpenseModal() {
               value={amountRupees}
               onChangeText={setAmountRupees}
               placeholder="0.00"
+              placeholderTextColor={formPlaceholderTextColor}
               keyboardType="decimal-pad"
-              style={styles.amountInput}
-              inputStyle={{ fontSize: 32, fontWeight: '800', textAlign: 'center' }}
+              containerStyle={styles.amountInput}
+              inputStyle={{ fontSize: 32, fontWeight: '800', textAlign: 'center', color: formInputTextColor }}
+              selectionColor={formCursorColor}
+              cursorColor={formCursorColor}
               autoFocus
             />
           </View>
         </View>
 
-        {/* Title / Description Input */}
+        {/* 2. Title / Description Input */}
         <Input
           label="Expense Title / Vendor"
           placeholder="e.g. Weekly Groceries, Electricity Bill"
+          placeholderTextColor={formPlaceholderTextColor}
           value={description}
           onChangeText={setDescription}
+          inputStyle={{ color: formInputTextColor }}
+          selectionColor={formCursorColor}
+          cursorColor={formCursorColor}
         />
 
-        {/* Category Selection */}
+        {/* 3. Category Selection */}
         <Text style={[styles.fieldLabel, { color: theme.colors.textPrimary }]}>Category</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
           {CATEGORIES.map((cat) => {
@@ -175,11 +204,12 @@ export default function AddExpenseModal() {
                     borderColor: isSelected ? cat.color : theme.colors.border,
                   },
                 ]}
-                onPress={() => setCategoryId(cat.id)}
+                onPress={() => setCategoryId(cat.id as CategoryId)}
               >
-                <Ionicons
-                  name={cat.icon as any}
-                  size={16}
+                <CategoryIcon
+                  category={cat}
+                  iconSize={16}
+                  showBackground={false}
                   color={isSelected ? '#FFF' : theme.colors.textSecondary}
                 />
                 <Text
@@ -195,7 +225,7 @@ export default function AddExpenseModal() {
           })}
         </ScrollView>
 
-        {/* Payment Method Selection */}
+        {/* 4. Payment Method Selection */}
         <Text style={[styles.fieldLabel, { color: theme.colors.textPrimary }]}>Payment Method</Text>
         <View style={styles.paymentGrid}>
           {PAYMENT_METHODS.map((pm) => {
@@ -212,11 +242,15 @@ export default function AddExpenseModal() {
                 ]}
                 onPress={() => setPaymentMethod(pm.id as PaymentMethod)}
               >
-                <Ionicons
-                  name={pm.icon as any}
-                  size={18}
-                  color={isSelected ? theme.colors.primary : theme.colors.textSecondary}
-                />
+                {(() => {
+                  const PaymentIcon = PAYMENT_ICON_MAP[pm.iconName] ?? MoreHorizontal;
+                  return (
+                    <PaymentIcon
+                      size={18}
+                      color={isSelected ? theme.colors.primary : theme.colors.textSecondary}
+                    />
+                  );
+                })()}
                 <Text
                   style={[
                     styles.paymentOptionText,
@@ -230,56 +264,72 @@ export default function AddExpenseModal() {
           })}
         </View>
 
-        {/* Split Ratio — only visible in shared household mode */}
-        {!isSolo && (
-          <>
-            <Text style={[styles.fieldLabel, { color: theme.colors.textPrimary }]}>Household Split</Text>
-            <View style={styles.splitRow}>
-              <TouchableOpacity
-                style={[
-                  styles.splitOption,
-                  splitRatio === 'equal' && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                ]}
-                onPress={() => setSplitRatio('equal')}
-              >
-                <Text style={[styles.splitText, splitRatio === 'equal' && { color: '#FFF' }]}>
-                  Shared 50 / 50
-                </Text>
-              </TouchableOpacity>
+        {/* 5. Payment Status Selection */}
+        <Text style={[styles.fieldLabel, { color: theme.colors.textPrimary }]}>Payment Status</Text>
+        <View style={styles.statusRow}>
+          <TouchableOpacity
+            style={[
+              styles.statusOption,
+              {
+                backgroundColor: paymentStatus === 'paid' ? theme.colors.primary : theme.colors.surface,
+                borderColor: paymentStatus === 'paid' ? theme.colors.primary : theme.colors.border,
+              },
+            ]}
+            onPress={() => setPaymentStatus('paid')}
+            accessibilityRole="button"
+            accessibilityLabel="Paid"
+          >
+            <Check size={16} color={paymentStatus === 'paid' ? '#FFFFFF' : theme.colors.textSecondary} />
+            <Text
+              style={[
+                styles.statusText,
+                {
+                  color: paymentStatus === 'paid' ? '#FFFFFF' : theme.colors.textPrimary,
+                  fontWeight: '700',
+                },
+              ]}
+            >
+              Paid
+            </Text>
+          </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.splitOption,
-                  splitRatio === '100_user' && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                ]}
-                onPress={() => setSplitRatio('100_user')}
-              >
-                <Text style={[styles.splitText, splitRatio === '100_user' && { color: '#FFF' }]}>
-                  100% You
-                </Text>
-              </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.statusOption,
+              {
+                backgroundColor: paymentStatus === 'credit' ? theme.colors.warning : theme.colors.surface,
+                borderColor: paymentStatus === 'credit' ? theme.colors.warning : theme.colors.border,
+              },
+            ]}
+            onPress={() => setPaymentStatus('credit')}
+            accessibilityRole="button"
+            accessibilityLabel="Credit"
+          >
+            <Clock size={16} color={paymentStatus === 'credit' ? '#FFFFFF' : theme.colors.textSecondary} />
+            <Text
+              style={[
+                styles.statusText,
+                {
+                  color: paymentStatus === 'credit' ? '#FFFFFF' : theme.colors.textPrimary,
+                  fontWeight: '700',
+                },
+              ]}
+            >
+              Credit
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.splitOption,
-                  splitRatio === '100_partner' && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                ]}
-                onPress={() => setSplitRatio('100_partner')}
-              >
-                <Text style={[styles.splitText, splitRatio === '100_partner' && { color: '#FFF' }]}>
-                  100% {partnerName}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-
-        {/* Optional Notes */}
+        {/* 6. Optional Notes */}
         <Input
           label="Notes (Optional)"
           placeholder="Add extra context or receipt details..."
+          placeholderTextColor={formPlaceholderTextColor}
           value={notes}
           onChangeText={setNotes}
+          inputStyle={{ color: formInputTextColor }}
+          selectionColor={formCursorColor}
+          cursorColor={formCursorColor}
           multiline
         />
 
@@ -299,7 +349,7 @@ export default function AddExpenseModal() {
         visible={showReflectionModal}
         reflection={reflectionResult}
         amountPaise={parsedAmountPaise}
-        categoryName={getCategoryById(categoryId).label}
+        categoryName={getCategoryById(categoryId as CategoryId).label}
         onConfirm={executeSave}
         onCancel={() => setShowReflectionModal(false)}
         isSubmitting={isLoading}
@@ -323,7 +373,7 @@ const styles = StyleSheet.create({
   closeButton: {
     width: 36,
     height: 36,
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
@@ -403,20 +453,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 6,
   },
-  splitRow: {
+  statusRow: {
     flexDirection: 'row',
+    gap: 10,
     marginBottom: 16,
   },
-  splitOption: {
+  statusOption: {
     flex: 1,
-    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    alignItems: 'center',
-    marginRight: 6,
   },
-  splitText: {
-    fontSize: 12,
-    fontWeight: '600',
+  statusText: {
+    fontSize: 14,
   },
 });

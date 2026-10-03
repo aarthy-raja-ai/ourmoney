@@ -33,7 +33,7 @@ const BANNED_FIELDS = [
   'password',
 ] as const;
 
-type BannedField = typeof BANNED_FIELDS[number];
+export type BannedField = typeof BANNED_FIELDS[number];
 
 export class SensitiveFieldError extends Error {
   constructor(fieldName: string) {

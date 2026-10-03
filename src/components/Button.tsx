@@ -2,22 +2,22 @@ import React from 'react';
 import {
   TouchableOpacity,
   Text,
-  StyleSheet,
   ActivityIndicator,
   type ViewStyle,
   type TextStyle,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
-interface ButtonProps {
+export interface ButtonProps {
   title: string;
   onPress: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
   isLoading?: boolean;
+  loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
@@ -30,11 +30,14 @@ export function Button({
   variant = 'primary',
   size = 'md',
   isLoading = false,
+  loading = false,
   disabled = false,
   style,
   textStyle,
   fullWidth = false,
 }: ButtonProps) {
+  const showLoading = isLoading || loading;
+
   const { theme } = useTheme();
 
   const getContainerStyle = (): ViewStyle => {
@@ -45,13 +48,14 @@ export function Button({
       flexDirection: 'row',
       paddingVertical: size === 'sm' ? 8 : size === 'lg' ? 16 : 12,
       paddingHorizontal: size === 'sm' ? 14 : size === 'lg' ? 28 : 20,
-      opacity: disabled || isLoading ? 0.6 : 1,
+      opacity: disabled || showLoading ? 0.6 : 1,
       width: fullWidth ? '100%' : undefined,
     };
     switch (variant) {
       case 'primary':
         return { ...base, backgroundColor: theme.colors.primary };
       case 'secondary':
+      case 'outline':
         return { ...base, backgroundColor: theme.colors.primaryLight, borderWidth: 1, borderColor: theme.colors.primary };
       case 'ghost':
         return { ...base, backgroundColor: 'transparent' };
@@ -70,6 +74,7 @@ export function Button({
       case 'danger':
         return { ...base, color: '#FFFFFF' };
       case 'secondary':
+      case 'outline':
         return { ...base, color: theme.colors.primary };
       case 'ghost':
         return { ...base, color: theme.colors.primary };
@@ -80,13 +85,13 @@ export function Button({
     <TouchableOpacity
       style={[getContainerStyle(), style]}
       onPress={onPress}
-      disabled={disabled || isLoading}
+      disabled={disabled || showLoading}
       activeOpacity={0.75}
       accessibilityRole="button"
       accessibilityLabel={title}
-      accessibilityState={{ disabled: disabled || isLoading }}
+      accessibilityState={{ disabled: disabled || showLoading }}
     >
-      {isLoading ? (
+      {showLoading ? (
         <ActivityIndicator
           size="small"
           color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : theme.colors.primary}

@@ -18,7 +18,7 @@ import { OfflineBanner } from '../src/components/OfflineBanner';
 import { View } from 'react-native';
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, userProfile } = useAuth();
+  const { isAuthenticated, isLoading, profileLoaded, userProfile } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
   const segments = useSegments();
@@ -26,7 +26,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
   const redirectingRef = useRef(false);
 
   useEffect(() => {
-    if (isLoading) {
+    if (isLoading || (isAuthenticated && !profileLoaded)) {
       redirectingRef.current = false;
       return;
     }
@@ -34,7 +34,6 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
 
     const inAuthGroup = segments[0] === '(auth)';
     const inSetupGroup = segments[0] === '(setup)';
-    const inTabsGroup = segments[0] === '(tabs)';
 
     if (!isAuthenticated && !inAuthGroup) {
       // Not logged in → welcome screen
@@ -42,27 +41,29 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
       router.replace('/(auth)/welcome');
     } else if (
       isAuthenticated &&
-      userProfile !== null &&           // profile fully loaded
-      !userProfile.householdId &&       // no household yet
+      profileLoaded &&
+      !userProfile?.householdId &&   // no household (null profile OR profile without householdId)
       !inSetupGroup &&
       !inAuthGroup
     ) {
-      // Logged in but no household → setup
+      // Logged in but no household → setup flow
       redirectingRef.current = true;
       router.replace('/(setup)/household-setup');
     } else if (
       isAuthenticated &&
-      userProfile?.householdId &&       // has a household
-      (inAuthGroup || inSetupGroup)     // stuck on auth/setup screen
+      userProfile?.householdId &&    // has a household
+      (inAuthGroup || inSetupGroup)  // stuck on auth/setup screen
     ) {
-      // Logged in with household → home
+      // Logged in with household → home dashboard
       redirectingRef.current = true;
       router.replace('/(tabs)/');
     }
-  }, [isAuthenticated, isLoading, userProfile, userProfile?.householdId, segments]);
+  }, [isAuthenticated, isLoading, profileLoaded, userProfile, userProfile?.householdId, segments]);
 
-  // Show loading spinner while auth + profile are being resolved
-  if (isLoading || (isAuthenticated && userProfile === null)) {
+  // Show loading spinner only while auth state or profile are still being resolved.
+  // Once isLoading=false and profileLoaded=true, always render children
+  // and let the useEffect handle routing.
+  if (isLoading || (isAuthenticated && !profileLoaded)) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <LoadingSpinner fullScreen message="Loading..." />

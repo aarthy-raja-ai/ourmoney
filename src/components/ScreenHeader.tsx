@@ -2,15 +2,16 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, type ViewStyle } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
-interface ScreenHeaderProps {
+export interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
+  hideBack?: boolean;
   leftAction?: {
     icon: React.ReactNode;
     onPress: () => void;
     label: string;
   };
-  rightAction?: {
+  rightAction?: React.ReactNode | {
     icon: React.ReactNode;
     onPress: () => void;
     label: string;
@@ -46,14 +47,16 @@ export function ScreenHeader({ title, subtitle, leftAction, rightAction, style }
       </View>
       <View style={styles.side}>
         {rightAction && (
-          <TouchableOpacity
-            onPress={rightAction.onPress}
-            style={[styles.iconBtn, { backgroundColor: theme.colors.surfaceOverlay, borderRadius: theme.radii.full }]}
-            accessibilityRole="button"
-            accessibilityLabel={rightAction.label}
-          >
-            {rightAction.icon}
-          </TouchableOpacity>
+          React.isValidElement(rightAction) ? rightAction : (
+            <TouchableOpacity
+              onPress={(rightAction as any).onPress}
+              style={[styles.iconBtn, { backgroundColor: theme.colors.surfaceOverlay, borderRadius: theme.radii.full }]}
+              accessibilityRole="button"
+              accessibilityLabel={(rightAction as any).label}
+            >
+              {(rightAction as any).icon}
+            </TouchableOpacity>
+          )
         )}
       </View>
     </View>

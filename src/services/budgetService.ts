@@ -5,9 +5,7 @@
 import {
   collection,
   doc,
-  addDoc,
   setDoc,
-  updateDoc,
   deleteDoc,
   onSnapshot,
   query,
@@ -16,7 +14,7 @@ import {
   Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, auth } from '../config/firebase';
 import type { Budget, CreateBudgetInput } from '../models/budget';
 import { COLLECTIONS, SUBCOLLECTIONS } from './collections';
 import { toUserFriendlyError } from '../utils/errorMessages';
@@ -36,15 +34,24 @@ export async function setBudget(
   try {
     const budgetId = `${input.month}_${input.categoryId}`;
     const ref = doc(db, COLLECTIONS.HOUSEHOLDS, householdId, SUBCOLLECTIONS.BUDGETS, budgetId);
+    const createdByUserId = input.createdByUserId ?? auth.currentUser?.uid ?? '';
     const data = {
       ...input,
       id: budgetId,
       householdId,
+      createdByUserId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
     await setDoc(ref, data, { merge: true });
-    return { id: budgetId, ...input, createdAt: Timestamp.now(), updatedAt: Timestamp.now() };
+    return {
+      ...input,
+      id: budgetId,
+      householdId,
+      createdByUserId: input.createdByUserId ?? '',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
   } catch (error) {
     throw new Error(toUserFriendlyError(error, 'budget-save'));
   }

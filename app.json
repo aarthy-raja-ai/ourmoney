@@ -9,20 +9,22 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F1D35"
+      "backgroundColor": "#060E1E"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ourmoney.app",
+      "bundleIdentifier": "com.ourmoney",
       "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0F1D35"
+        "backgroundColor": "#060E1E"
       },
-      "package": "com.ourmoney.app",
+      "package": "com.ourmoney",
       "versionCode": 1,
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE",
@@ -39,7 +41,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0F1D35",
+          "backgroundColor": "#060E1E",
           "image": "./assets/splash.png",
           "imageWidth": 200
         }
@@ -52,6 +54,9 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "75d8d02c-7cbe-4cec-83ba-84687cd8e1f3"
       }
     }
   }

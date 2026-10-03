@@ -20,9 +20,11 @@ import {
   updateDoc,
   serverTimestamp,
   deleteDoc,
+  arrayRemove,
 } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import type { User, CreateUserInput, UpdateUserInput } from '../models/user';
+export type { CreateUserInput };
 import { COLLECTIONS } from './collections';
 import { toUserFriendlyError } from '../utils/errorMessages';
 
@@ -41,7 +43,7 @@ export async function signUp(
     await firebaseUpdateProfile(user, { displayName });
 
     // Create Firestore user document
-    const userDoc: Omit<User, 'id'> & { createdAt: unknown; updatedAt: unknown } = {
+    const userDoc: Record<string, any> = {
       displayName,
       email: user.email ?? email,
       photoUrl: undefined,
@@ -140,15 +142,63 @@ export async function deleteAccount(userId: string): Promise<void> {
       throw new Error('Cannot delete this account.');
     }
 
-    // Remove user document (household membership is preserved for partner)
-    // The householdId reference is intentionally left in shared collections
-    // so partner's historical data is not destroyed
-    await deleteDoc(doc(db, COLLECTIONS.USERS, userId));
+    // 1. Fetch user profile to check household association
+    const userDocRef = doc(db, COLLECTIONS.USERS, userId);
+    const userSnap = await getDoc(userDocRef);
 
-    // Delete Firebase Auth account
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      const householdId = userData.householdId;
+
+      if (householdId) {
+        const householdRef = doc(db, COLLECTIONS.HOUSEHOLDS, householdId);
+        const householdSnap = await getDoc(householdRef);
+
+        if (householdSnap.exists()) {
+          const householdData = householdSnap.data();
+          const memberIds: string[] = householdData.memberIds ?? [];
+          const remainingMembers = memberIds.filter((id) => id !== userId);
+
+          if (remainingMembers.length === 0) {
+            // Solo household with no other members -> Delete household document
+            console.log('[DELETE_ACCOUNT] Deleting solo household document:', householdId);
+            await deleteDoc(householdRef);
+          } else {
+            // Shared household -> Remove user from memberIds and transfer ownership if creator
+            console.log('[DELETE_ACCOUNT] Removing user from shared household:', householdId);
+            const updates: Record<string, any> = {
+              memberIds: arrayRemove(userId),
+              updatedAt: serverTimestamp(),
+            };
+
+            if (householdData.createdByUserId === userId && remainingMembers[0]) {
+              updates.createdByUserId = remainingMembers[0];
+            }
+
+            await updateDoc(householdRef, updates);
+          }
+        }
+      }
+    }
+
+    // 2. Delete Firestore user profile document
+    await deleteDoc(userDocRef);
+
+    // 3. Delete Firebase Auth user credentials
     await deleteUser(user);
-  } catch (error) {
+  } catch (error: any) {
+    console.error('[DELETE_ACCOUNT] Error during account deletion:', error);
+    if (error?.code === 'auth/requires-recent-login') {
+      throw new Error(
+        'For security reasons, please sign out and sign back in before deleting your account.',
+      );
+    }
     if (error instanceof Error && error.message.includes('Cannot delete')) throw error;
     throw new Error(toUserFriendlyError(error, 'account-delete'));
   }
+}
+
+export const deleteUserAccount = deleteAccount;
+export async function updateProfileName(userId: string, displayName: string): Promise<void> {
+  return updateUserProfile(userId, { displayName });
 }

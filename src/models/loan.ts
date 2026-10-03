@@ -73,6 +73,7 @@ export type UpdateLoanInput = Partial<
     Loan,
     | 'lenderName'
     | 'loanType'
+    | 'originalAmountPaise'
     | 'outstandingAmountPaise'
     | 'interestRateBps'
     | 'interestType'

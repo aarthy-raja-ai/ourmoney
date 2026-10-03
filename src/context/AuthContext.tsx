@@ -6,7 +6,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { onSnapshot, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from '../services/authService';
 import type { User } from '../models/user';
 import { db } from '../config/firebase';
@@ -18,9 +18,12 @@ interface AuthContextValue {
   user: FirebaseUser | null;
   userProfile: User | null;
   isLoading: boolean;
+  /** True once profile has been fetched (may still be null if no doc exists) */
+  profileLoaded: boolean;
   isAuthenticated: boolean;
   /** Force-refetch the user profile from Firestore (kept for API compatibility) */
   refreshProfile: () => Promise<void>;
+  refreshUserProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -30,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Keep a ref to the active Firestore profile listener so we can unsub on user change
   const profileUnsubRef = useRef<(() => void) | null>(null);
@@ -46,30 +50,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (user) {
         // Subscribe to the user's Firestore document in real-time.
-        // This means when householdId is written (by createSoloHousehold /
-        // createHousehold / joinHousehold), the NavigationGuard automatically
-        // re-renders and routes the user to the correct screen.
+        // When householdId changes (solo/shared setup), NavigationGuard
+        // automatically re-renders and routes to the correct screen.
         const userRef = doc(db, COLLECTIONS.USERS, user.uid);
         const unsubProfile = onSnapshot(
           userRef,
-          (snap) => {
+          async (snap) => {
             if (snap.exists()) {
+              // Profile exists — use it
               setUserProfile({ id: snap.id, ...snap.data() } as User);
             } else {
-              setUserProfile(null);
+              // No Firestore profile doc yet (e.g. signed in before doc was created).
+              // Auto-create a minimal profile from Firebase Auth data so the app
+              // doesn't get stuck in an infinite loading loop.
+              try {
+                const profileData = {
+                  displayName: user.displayName ?? user.email?.split('@')[0] ?? 'User',
+                  email: user.email ?? '',
+                  photoUrl: user.photoURL ?? undefined,
+                  householdId: undefined,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                };
+                await setDoc(userRef, profileData);
+                // The onSnapshot will fire again with the newly created doc
+                return;
+              } catch {
+                // If auto-create also fails (e.g. offline), set null and continue
+                setUserProfile(null);
+              }
             }
             setIsLoading(false);
+            setProfileLoaded(true);
           },
           (_err) => {
-            // Profile read failed — treat as no profile
+            // Profile read failed (permission denied / offline) — don't get stuck
             setUserProfile(null);
             setIsLoading(false);
+            setProfileLoaded(true);
           },
         );
         profileUnsubRef.current = unsubProfile;
       } else {
         setUserProfile(null);
         setIsLoading(false);
+        setProfileLoaded(false);
       }
     });
 
@@ -99,8 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: firebaseUser, // alias
         userProfile,
         isLoading,
+        profileLoaded,
         isAuthenticated: firebaseUser !== null,
         refreshProfile,
+        refreshUserProfile: refreshProfile,
         signOut,
       }}
     >

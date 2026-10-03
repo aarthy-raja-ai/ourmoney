@@ -18,7 +18,9 @@ export default function AboutScreen() {
         <View style={styles.logoContainer}>
           <Text style={[styles.appName, { color: theme.colors.primary }]}>OurMoney</Text>
           <Text style={[styles.version, { color: theme.colors.textSecondary }]}>Version 1.0.0 (Production)</Text>
-          <Badge label="Private Household Edition" variant="primary" size="sm" style={{ marginTop: 6 }} />
+          <View style={{ marginTop: 6 }}>
+            <Badge label="Private Household Edition" variant="primary" size="sm" />
+          </View>
         </View>
 
         <Card style={styles.card}>

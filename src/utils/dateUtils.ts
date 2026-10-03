@@ -10,6 +10,13 @@ export function getCurrentMonth(): string {
 }
 
 /**
+ * Get current date as 'YYYY-MM-DD' string.
+ */
+export function getCurrentDateString(): string {
+  return formatDateKey(new Date());
+}
+
+/**
  * Format a Date as 'YYYY-MM'.
  */
 export function formatMonth(date: Date): string {
@@ -58,6 +65,8 @@ export function timestampToDate(ts: Timestamp | Date): Date {
   if (ts instanceof Timestamp) return ts.toDate();
   return ts;
 }
+
+export const formatDate = (date: Date | Timestamp) => formatDisplayDate(date);
 
 /**
  * Format a date for display.

@@ -7,7 +7,7 @@ import { Button } from '../../src/components/Button';
 import { ErrorBanner } from '../../src/components/ErrorBanner';
 import { Card } from '../../src/components/Card';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
-import { createHousehold, registerInviteCode } from '../../src/services/householdService';
+import { createHousehold } from '../../src/services/householdService';
 import { useAuth } from '../../src/context/AuthContext';
 
 export default function CreateHouseholdScreen() {
@@ -27,12 +27,7 @@ export default function CreateHouseholdScreen() {
         firebaseUser.uid,
         firebaseUser.displayName ?? 'User',
       );
-      if (household.inviteCode && household.inviteCodeExpiresAt) {
-        await registerInviteCode(
-          household.inviteCode,
-          household.id,
-          household.inviteCodeExpiresAt.toDate(),
-        );
+      if (household.inviteCode) {
         setInviteCode(household.inviteCode);
       }
       await refreshProfile();

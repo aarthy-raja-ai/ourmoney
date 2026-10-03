@@ -19,6 +19,8 @@ interface ThemeContextValue {
   isDark: boolean;
   preference: ThemePreference;
   setPreference: (pref: ThemePreference) => void;
+  colorScheme: ThemePreference;
+  setColorScheme: (pref: ThemePreference) => void;
 }
 
 const THEME_STORAGE_KEY = '@ourmoney/theme_preference';
@@ -49,7 +51,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const theme = isDark ? darkTheme : lightTheme;
 
   return (
-    <ThemeContext.Provider value={{ theme, isDark, preference, setPreference }}>
+    <ThemeContext.Provider
+      value={{
+        theme,
+        isDark,
+        preference,
+        setPreference,
+        colorScheme: preference,
+        setColorScheme: setPreference,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );

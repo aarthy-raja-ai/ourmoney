@@ -38,7 +38,7 @@ export default function HouseholdSetupScreen() {
     try {
       await createSoloHousehold(firebaseUser.uid, firebaseUser.displayName ?? 'User');
       await refreshProfile();
-      // refreshProfile triggers auth guard → navigates to (tabs)/
+      router.replace('/(tabs)/');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
     } finally {

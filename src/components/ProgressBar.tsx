@@ -3,23 +3,38 @@ import { View, StyleSheet } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import type { BudgetStatus } from '../models/budget';
 
-interface ProgressBarProps {
-  percentage: number; // 0-100+
+export interface ProgressBarProps {
+  percentage?: number; // 0-100+
+  progress?: number;   // 0-1 or 0-100
   status?: BudgetStatus;
+  color?: string;
   height?: number;
 }
 
-export function ProgressBar({ percentage, status = 'normal', height = 6 }: ProgressBarProps) {
+export function ProgressBar({
+  percentage,
+  progress,
+  status = 'normal',
+  color,
+  height = 6,
+}: ProgressBarProps) {
   const { theme } = useTheme();
 
-  const fillColor = {
-    normal: theme.colors.primary,
-    'heads-up': theme.colors.warning,
-    almost: '#F97316', // orange
-    exceeded: theme.colors.danger,
-  }[status];
+  let effectivePercentage = percentage ?? 0;
+  if (percentage === undefined && progress !== undefined) {
+    effectivePercentage = progress <= 1 ? progress * 100 : progress;
+  }
 
-  const fillWidth = Math.min(percentage, 100);
+  const fillColor =
+    color ??
+    ({
+      normal: theme.colors.primary,
+      'heads-up': theme.colors.warning,
+      almost: '#F97316', // orange
+      exceeded: theme.colors.danger,
+    }[status] ?? theme.colors.primary);
+
+  const fillWidth = Math.min(effectivePercentage, 100);
 
   return (
     <View

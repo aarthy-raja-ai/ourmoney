@@ -5,50 +5,51 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/context/ThemeContext';
-import { useAuth } from '../../src/context/AuthContext';
-import { useHousehold } from '../../src/context/HouseholdContext';
 import { useExpenses } from '../../src/hooks/useExpenses';
 import { Card } from '../../src/components/Card';
 import { AmountDisplay } from '../../src/components/AmountDisplay';
 import { EmptyState } from '../../src/components/EmptyState';
-import { LoadingSpinner } from '../../src/components/LoadingSpinner';
+import { SkeletonCard } from '../../src/components/SkeletonLoader';
 import { ErrorBanner } from '../../src/components/ErrorBanner';
 import { CategoryIcon } from '../../src/components/CategoryIcon';
 import { getCategoryById, CATEGORIES } from '../../src/constants/categories';
 import type { CategoryId } from '../../src/constants/categories';
-import { formatDisplayDate, formatGroupHeader, formatDateKey, getCurrentMonth } from '../../src/utils/dateUtils';
-import { formatAmount } from '../../src/utils/currency';
-import { Search, Filter } from 'lucide-react-native';
+import { getPaymentMethodById } from '../../src/constants/paymentMethods';
+import type { PaymentMethodId } from '../../src/constants/paymentMethods';
+import { formatGroupHeader, formatDateKey, getCurrentMonth } from '../../src/utils/dateUtils';
+import { Search, X, Plus, FilterX } from 'lucide-react-native';
 import { Timestamp } from 'firebase/firestore';
 
 export default function TransactionsScreen() {
   const { theme } = useTheme();
-  const { firebaseUser } = useAuth();
-  const { partner } = useHousehold();
   const router = useRouter();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryId | 'all'>('all');
-  const [selectedPerson, setSelectedPerson] = useState<'all' | 'me' | 'partner'>('all');
 
   const { expenses, isLoading, error, retry } = useExpenses({ month: getCurrentMonth() });
 
+  // Combined filter logic
   const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return expenses.filter((e) => {
-      const matchSearch = searchQuery === '' ||
-        e.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchCategory = selectedCategory === 'all' || e.categoryId === selectedCategory;
-      const matchPerson = selectedPerson === 'all' ||
-        (selectedPerson === 'me' && e.paidByUserId === firebaseUser?.uid) ||
-        (selectedPerson === 'partner' && e.paidByUserId !== firebaseUser?.uid);
-      return matchSearch && matchCategory && matchPerson;
-    });
-  }, [expenses, searchQuery, selectedCategory, selectedPerson, firebaseUser]);
+      const matchSearch =
+        q === '' ||
+        e.description.toLowerCase().includes(q) ||
+        (e.notes && e.notes.toLowerCase().includes(q));
 
-  // Group by date
+      const matchCategory =
+        selectedCategory === 'all' || e.categoryId === selectedCategory;
+
+      return matchSearch && matchCategory;
+    });
+  }, [expenses, searchQuery, selectedCategory]);
+
+  // Group expenses chronologically by date
   const groups = useMemo(() => {
     const map = new Map<string, typeof filtered>();
     for (const e of filtered) {
-      const d = e.date instanceof Timestamp ? e.date.toDate() : e.date as Date;
+      const d = e.date instanceof Timestamp ? e.date.toDate() : (e.date as Date);
       const key = formatDateKey(d);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(e);
@@ -56,116 +57,368 @@ export default function TransactionsScreen() {
     return Array.from(map.entries()).sort(([a], [b]) => b.localeCompare(a));
   }, [filtered]);
 
-  if (isLoading) return <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.background }]}><LoadingSpinner fullScreen /></SafeAreaView>;
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('all');
+  };
+
+  const hasActiveFilters = searchQuery !== '' || selectedCategory !== 'all';
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.colors.separator }]}>
-        <Text style={[styles.title, { color: theme.colors.textPrimary, fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.bold }]}>Transactions</Text>
-      </View>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: theme.colors.separator }]}>
+          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Transactions</Text>
+        </View>
 
-      {/* Search */}
-      <View style={[styles.searchRow, { backgroundColor: theme.colors.surfaceOverlay }]}>
-        <Search size={16} color={theme.colors.textTertiary} />
-        <TextInput
-          style={[styles.searchInput, { color: theme.colors.textPrimary, fontSize: theme.fontSize.base }]}
-          placeholder="Search expenses"
-          placeholderTextColor={theme.colors.textTertiary}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          accessibilityLabel="Search expenses"
-        />
-      </View>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchRow, { backgroundColor: theme.colors.surfaceOverlay || '#162744' }]}>
+            <Search size={18} color={theme.colors.textTertiary} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.textPrimary }]}
+              placeholder="Search expenses"
+              placeholderTextColor={theme.colors.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              accessibilityLabel="Search expenses"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+              >
+                <X size={18} color={theme.colors.textTertiary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
 
-      {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        {(['all', 'me', 'partner'] as const).map((p) => (
-          <TouchableOpacity
-            key={p}
-            style={[styles.filterChip, { backgroundColor: selectedPerson === p ? theme.colors.primary : theme.colors.surface, borderColor: selectedPerson === p ? theme.colors.primary : theme.colors.border }]}
-            onPress={() => setSelectedPerson(p)}
-            accessibilityRole="button"
-            accessibilityLabel={`Filter by ${p}`}
-          >
-            <Text style={[{ color: selectedPerson === p ? '#fff' : theme.colors.textSecondary, fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium }]}>
-              {p === 'all' ? 'Everyone' : p === 'me' ? 'You' : (partner?.displayName ?? 'Partner')}
+        {/* Filters Section */}
+        <View style={styles.filtersWrapper}>
+          {/* Category Filter */}
+          <View style={styles.filterSection}>
+            <Text style={[styles.filterLabel, { color: theme.colors.textSecondary }]}>
+              Category
             </Text>
-          </TouchableOpacity>
-        ))}
-        <View style={[styles.filterDivider, { backgroundColor: theme.colors.separator }]} />
-        {CATEGORIES.map((cat) => (
-          <TouchableOpacity
-            key={cat.id}
-            style={[styles.filterChip, { backgroundColor: selectedCategory === cat.id ? cat.color : theme.colors.surface, borderColor: selectedCategory === cat.id ? cat.color : theme.colors.border }]}
-            onPress={() => setSelectedCategory(selectedCategory === cat.id ? 'all' : cat.id)}
-            accessibilityRole="button"
-            accessibilityLabel={`Filter by ${cat.label}`}
-          >
-            <Text style={[{ color: selectedCategory === cat.id ? '#fff' : theme.colors.textSecondary, fontSize: theme.fontSize.sm }]}>{cat.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryScrollContainer}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.chip,
+                  selectedCategory === 'all'
+                    ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+                    : { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+                onPress={() => setSelectedCategory('all')}
+                accessibilityRole="button"
+                accessibilityLabel="Filter by All Categories"
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: selectedCategory === 'all' ? '#FFFFFF' : theme.colors.textSecondary },
+                    selectedCategory === 'all' && styles.chipTextActive,
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
 
-      <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={false} onRefresh={retry} tintColor={theme.colors.primary} />} showsVerticalScrollIndicator={false}>
-        {error && <ErrorBanner message={error} onRetry={retry} />}
-
-        {groups.length === 0 ? (
-          <EmptyState
-            title="No expenses found"
-            subtitle={searchQuery ? 'Try a different search term.' : 'Add an expense using the + button.'}
-            actionLabel="Add expense"
-            onAction={() => router.push('/(modals)/add-expense')}
-          />
-        ) : (
-          groups.map(([dateKey, items]) => (
-            <View key={dateKey} style={styles.group}>
-              <Text style={[styles.groupHeader, { color: theme.colors.textTertiary, fontSize: theme.fontSize.xs, fontWeight: theme.fontWeight.semibold }]}>
-                {formatGroupHeader(dateKey)}
-              </Text>
-              <Card padding={0}>
-                {items.map((expense, idx) => {
-                  const isMe = expense.paidByUserId === firebaseUser?.uid;
-                  const paidByLabel = isMe ? 'You' : (partner?.displayName ?? 'Partner');
-                  return (
-                    <TouchableOpacity
-                      key={expense.id}
-                      style={[styles.expenseRow, idx < items.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.colors.separator }]}
-                      onPress={() => router.push(`/(modals)/expense-detail?id=${expense.id}`)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${expense.description}, ${formatAmount(expense.amountPaise)}, paid by ${paidByLabel}`}
+              {CATEGORIES.map((cat) => {
+                const isSelected = selectedCategory === cat.id;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.chip,
+                      isSelected
+                        ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+                        : { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                    ]}
+                    onPress={() => setSelectedCategory(isSelected ? 'all' : cat.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Filter by ${cat.label}`}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: isSelected ? '#FFFFFF' : theme.colors.textSecondary },
+                        isSelected && styles.chipTextActive,
+                      ]}
                     >
-                      <CategoryIcon categoryId={expense.categoryId} size={38} iconSize={19} />
-                      <View style={styles.expenseInfo}>
-                        <Text style={[{ color: theme.colors.textPrimary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium }]} numberOfLines={1}>{expense.description}</Text>
-                        <Text style={[{ color: theme.colors.textSecondary, fontSize: theme.fontSize.xs }]}>{getCategoryById(expense.categoryId).label} · {paidByLabel}</Text>
-                      </View>
-                      <AmountDisplay paise={expense.amountPaise} size="sm" bold />
-                    </TouchableOpacity>
-                  );
-                })}
-              </Card>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+
+        {/* Transaction History List */}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={false}
+              onRefresh={retry}
+              tintColor={theme.colors.primary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          {error && <ErrorBanner message={error} onRetry={retry} />}
+
+          {isLoading ? (
+            <View style={{ gap: 12, paddingVertical: 8 }}>
+              <SkeletonCard height={72} />
+              <SkeletonCard height={72} />
+              <SkeletonCard height={72} />
             </View>
-          ))
-        )}
-        <View style={{ height: 100 }} />
-      </ScrollView>
+          ) : groups.length === 0 ? (
+            <EmptyState
+              icon={<FilterX size={44} color={theme.colors.textTertiary} />}
+              title="No expenses found"
+              subtitle={
+                expenses.length === 0
+                  ? 'Add your first expense using the + button.'
+                  : 'No expenses match your current filters.'
+              }
+              actionLabel={
+                expenses.length === 0
+                  ? 'Add expense'
+                  : hasActiveFilters
+                  ? 'Clear filters'
+                  : undefined
+              }
+              onAction={
+                expenses.length === 0
+                  ? () => router.push('/(modals)/add-expense')
+                  : handleClearFilters
+              }
+            />
+          ) : (
+            groups.map(([dateKey, items]) => (
+              <View key={dateKey} style={styles.group}>
+                <Text
+                  style={[
+                    styles.groupHeader,
+                    { color: theme.colors.textTertiary },
+                  ]}
+                >
+                  {formatGroupHeader(dateKey)}
+                </Text>
+
+                <Card padding={0}>
+                  {items.map((expense, idx) => {
+                    const cat = getCategoryById(expense.categoryId);
+                    const pm = getPaymentMethodById(expense.paymentMethod as PaymentMethodId);
+                    const pmLabel = pm?.label ?? 'Cash';
+                    const isPending = expense.paymentStatus === 'credit';
+
+                    return (
+                      <TouchableOpacity
+                        key={expense.id}
+                        style={[
+                          styles.expenseRow,
+                          idx < items.length - 1 && {
+                            borderBottomWidth: 1,
+                            borderBottomColor: theme.colors.separator,
+                          },
+                        ]}
+                        onPress={() => router.push(`/(modals)/expense-detail?id=${expense.id}`)}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${expense.description}, ${cat.label}`}
+                      >
+                        <CategoryIcon categoryId={expense.categoryId} size={42} iconSize={20} />
+
+                        <View style={styles.expenseInfo}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text
+                              style={[styles.expenseTitle, { color: theme.colors.textPrimary }]}
+                              numberOfLines={1}
+                            >
+                              {expense.description}
+                            </Text>
+                            {isPending && (
+                              <View style={{ backgroundColor: theme.colors.warningLight, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                <Text style={{ color: theme.colors.warning, fontSize: 10, fontWeight: '700' }}>
+                                  🟠 Pending
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text
+                            style={[styles.expenseMeta, { color: theme.colors.textSecondary }]}
+                            numberOfLines={1}
+                          >
+                            {cat.label} • {pmLabel}
+                          </Text>
+                        </View>
+
+                        <AmountDisplay
+                          paise={expense.amountPaise}
+                          size="md"
+                          bold
+                          color="#FFFFFF"
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </Card>
+              </View>
+            ))
+          )}
+          <View style={{ height: 100 }} />
+        </ScrollView>
+
+        {/* Floating Action Button (FAB) */}
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          onPress={() => router.push('/(modals)/add-expense')}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Add expense"
+        >
+          <Plus size={26} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
-  title: {},
-  searchRow: { flexDirection: 'row', alignItems: 'center', margin: 16, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, gap: 8 },
-  searchInput: { flex: 1 },
-  filters: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
-  filterDivider: { width: 1, height: '100%', marginHorizontal: 4 },
-  scroll: { paddingHorizontal: 16, gap: 16 },
-  group: { gap: 8 },
-  groupHeader: { letterSpacing: 0.5, paddingHorizontal: 4 },
-  expenseRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  expenseInfo: { flex: 1, gap: 3 },
+  safe: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    position: 'relative',
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    height: 44,
+    borderRadius: 12,
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    height: '100%',
+  },
+  filtersWrapper: {
+    gap: 12,
+    paddingBottom: 10,
+  },
+  filterSection: {
+    gap: 6,
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 16,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  categoryScrollContainer: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  chipTextActive: {
+    fontWeight: '700',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    gap: 16,
+  },
+  group: {
+    gap: 8,
+  },
+  groupHeader: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    paddingHorizontal: 4,
+    textTransform: 'uppercase',
+  },
+  expenseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  expenseInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  expenseTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  expenseMeta: {
+    fontSize: 12,
+  },
+  expensePayer: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 6,
+    zIndex: 99,
+  },
 });
+

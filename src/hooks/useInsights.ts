@@ -35,7 +35,7 @@ export function useInsights() {
     const categoryBreakdown = Object.entries(categoryTotals)
       .map(([catId, amountPaise]) => ({
         categoryId: catId,
-        category: getCategoryById(catId),
+        category: getCategoryById(catId as any),
         amountPaise,
         percentage: totalSpentPaise > 0 ? (amountPaise / totalSpentPaise) * 100 : 0,
       }))
@@ -47,7 +47,7 @@ export function useInsights() {
       const pct = b.amountPaise > 0 ? (spentPaise / b.amountPaise) * 100 : 0;
       return {
         ...b,
-        category: getCategoryById(b.categoryId),
+        category: getCategoryById(b.categoryId as any),
         spentPaise,
         percentUsed: Math.min(pct, 100),
         rawPercent: pct,
@@ -55,8 +55,8 @@ export function useInsights() {
     });
 
     // Debt overview
-    const activeLoans = loans.filter((l) => l.status === 'active');
-    const totalDebtPaise = activeLoans.reduce((sum, l) => sum + l.currentBalancePaise, 0);
+    const activeLoans = loans.filter((l) => l.isActive);
+    const totalDebtPaise = activeLoans.reduce((sum, l) => sum + (l.outstandingAmountPaise || 0), 0);
 
     return {
       totalSpentPaise,
@@ -68,7 +68,7 @@ export function useInsights() {
       budgetUtilization,
       totalDebtPaise,
       activeLoans,
-      partnerName: household?.partnerProfile?.displayName ?? 'Partner',
+      partnerName: 'Partner',
     };
   }, [expenses, budgets, loans, user, household]);
 

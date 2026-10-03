@@ -7,6 +7,8 @@ import React, {
   useEffect,
   useState,
   useCallback,
+  useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
 import { subscribeToHousehold, getMemberProfiles } from '../services/householdService';
@@ -22,6 +24,7 @@ interface HouseholdContextValue {
   error: string | null;
   householdId: string | null;
   refresh: () => void;
+  leaveHousehold: () => Promise<void>;
 }
 
 const HouseholdContext = createContext<HouseholdContextValue | undefined>(undefined);
@@ -34,9 +37,17 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const prevMemberIdsRef = useRef<string[]>([]);
+
   const householdId = userProfile?.householdId ?? null;
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const leaveHousehold = useCallback(async () => {
+    if (!firebaseUser || !householdId) return;
+    const { leaveHousehold: leaveService } = await import('../services/householdService');
+    await leaveService(householdId, firebaseUser.uid);
+  }, [firebaseUser, householdId]);
 
   useEffect(() => {
     if (!householdId) {
@@ -53,12 +64,19 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
       householdId,
       async (h) => {
         setHousehold(h);
-        if (h) {
-          try {
-            const memberProfiles = await getMemberProfiles(h.memberIds);
-            setMembers(memberProfiles);
-          } catch (e) {
-            // Non-critical: member profiles failed to load
+        if (h && h.memberIds) {
+          const idsChanged =
+            h.memberIds.length !== prevMemberIdsRef.current.length ||
+            h.memberIds.some((id, idx) => id !== prevMemberIdsRef.current[idx]);
+
+          if (idsChanged || members.length === 0) {
+            try {
+              prevMemberIdsRef.current = h.memberIds;
+              const memberProfiles = await getMemberProfiles(h.memberIds);
+              setMembers(memberProfiles);
+            } catch (e) {
+              // Non-critical: member profiles failed to load
+            }
           }
         }
         setIsLoading(false);
@@ -72,7 +90,10 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [householdId, refreshKey]);
 
-  const partner = members.find((m) => m.userId !== firebaseUser?.uid) ?? null;
+  const partner = useMemo(
+    () => members.find((m) => m.userId !== firebaseUser?.uid) ?? null,
+    [members, firebaseUser?.uid]
+  );
   const isSolo = household?.isSolo === true;
 
   return (
@@ -86,6 +107,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
         error,
         householdId,
         refresh,
+        leaveHousehold,
       }}
     >
       {children}

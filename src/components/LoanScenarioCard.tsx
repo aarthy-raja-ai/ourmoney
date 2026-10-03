@@ -2,7 +2,7 @@
 // Visual card displaying a loan repayment scenario (e.g., standard EMI vs extra monthly payment).
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { formatCurrency } from '../utils/currency';
@@ -29,7 +29,7 @@ export const LoanScenarioCard: React.FC<LoanScenarioCardProps> = ({
   monthlyPaymentPaise,
   payoffMonths,
   totalInterestPaise,
-  totalPaymentPaise,
+  totalPaymentPaise: _totalPaymentPaise,
   interestSavedPaise,
   monthsSaved,
   isRecommended = false,
@@ -40,11 +40,11 @@ export const LoanScenarioCard: React.FC<LoanScenarioCardProps> = ({
 
   return (
     <Card
-      style={[
-        styles.card,
-        isRecommended && { borderColor: theme.colors.primary, borderWidth: 2 },
-        selected && { backgroundColor: theme.colors.primaryLight },
-      ]}
+      style={{
+        ...styles.card,
+        ...(isRecommended ? { borderColor: theme.colors.primary, borderWidth: 2 } : {}),
+        ...(selected ? { backgroundColor: theme.colors.primaryLight } : {}),
+      }}
       onPress={onSelect}
     >
       <View style={styles.header}>
@@ -52,7 +52,9 @@ export const LoanScenarioCard: React.FC<LoanScenarioCardProps> = ({
           <View style={styles.titleRow}>
             <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{title}</Text>
             {isRecommended && (
-              <Badge label="Recommended" variant="success" size="sm" style={{ marginLeft: 8 }} />
+              <View style={{ marginLeft: 8 }}>
+                <Badge label="Recommended" variant="success" size="sm" />
+              </View>
             )}
           </View>
           <Text style={[styles.description, { color: theme.colors.textSecondary }]}>

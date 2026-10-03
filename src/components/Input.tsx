@@ -4,17 +4,17 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  TouchableOpacity,
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
-interface InputProps extends TextInputProps {
+export interface InputProps extends TextInputProps {
   label?: string;
   error?: string;
   hint?: string;
   containerStyle?: ViewStyle;
+  inputStyle?: any;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   isRequired?: boolean;
@@ -25,6 +25,8 @@ export function Input({
   error,
   hint,
   containerStyle,
+  inputStyle,
+  style,
   leftIcon,
   rightIcon,
   isRequired,
@@ -38,6 +40,18 @@ export function Input({
     : isFocused
     ? theme.colors.primary
     : theme.colors.border;
+
+  const combinedInputStyle = [
+    styles.input,
+    {
+      color: theme.colors.textPrimary,
+      fontSize: theme.fontSize.base,
+      paddingLeft: leftIcon ? 0 : theme.spacing.base,
+      paddingRight: rightIcon ? 0 : theme.spacing.base,
+    },
+    style,
+    inputStyle,
+  ];
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -65,20 +79,12 @@ export function Input({
       >
         {leftIcon && <View style={styles.iconLeft}>{leftIcon}</View>}
         <TextInput
-          style={[
-            styles.input,
-            {
-              color: theme.colors.textPrimary,
-              fontSize: theme.fontSize.base,
-              paddingLeft: leftIcon ? 0 : theme.spacing.base,
-              paddingRight: rightIcon ? 0 : theme.spacing.base,
-            },
-          ]}
           placeholderTextColor={theme.colors.textTertiary}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           accessibilityLabel={label}
           {...props}
+          style={combinedInputStyle}
         />
         {rightIcon && <View style={styles.iconRight}>{rightIcon}</View>}
       </View>

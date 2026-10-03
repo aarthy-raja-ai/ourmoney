@@ -12,6 +12,7 @@ interface UseLoansResult {
   isLoading: boolean;
   error: string | null;
   retry: () => void;
+  refresh: () => void;
 }
 
 export function useLoans(): UseLoansResult {
@@ -51,5 +52,5 @@ export function useLoans(): UseLoansResult {
   const totalOutstandingPaise = loans.reduce((sum, l) => sum + l.outstandingAmountPaise, 0);
   const activeCount = loans.filter((l) => l.isActive).length;
 
-  return { loans, totalOutstandingPaise, activeCount, isLoading, error, retry };
+  return { loans, totalOutstandingPaise, activeCount, isLoading, error, retry, refresh: retry };
 }

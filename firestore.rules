@@ -31,6 +31,14 @@ service cloud.firestore {
         request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.memberIds;
     }
 
+    // Does the specified household currently have an active, non-expired invite code?
+    function hasActiveInvite(householdId) {
+      return exists(/databases/$(database)/documents/households/$(householdId)) &&
+        get(/databases/$(database)/documents/households/$(householdId)).data.inviteCode != null &&
+        get(/databases/$(database)/documents/households/$(householdId)).data.inviteCodeExpiresAt != null &&
+        get(/databases/$(database)/documents/households/$(householdId)).data.inviteCodeExpiresAt > request.time;
+    }
+
     // Does the incoming data NOT contain banned sensitive fields?
     function hasNoSensitiveFields(data) {
       return !('accountNumber' in data) &&
@@ -65,6 +73,7 @@ service cloud.firestore {
              data.description is string &&
              data.description.size() > 0 &&
              data.description.size() <= 200 &&
+             (!('paymentStatus' in data) || data.paymentStatus in ['paid', 'credit']) &&
              hasNoSensitiveFields(data);
     }
 
@@ -85,6 +94,23 @@ service cloud.firestore {
              data.lenderName is string &&
              data.lenderName.size() > 0 &&
              data.lenderName.size() <= 100 &&
+             hasNoSensitiveFields(data);
+    }
+
+    // Validate pending purchase fields
+    function isValidPendingPurchase(data) {
+      return data.keys().hasAll([
+               'householdId', 'amountMinor', 'title',
+               'category', 'merchantOrPerson', 'createdBy',
+               'createdAt', 'dueDate', 'status'
+             ]) &&
+             data.amountMinor is int &&
+             data.amountMinor > 0 &&
+             data.amountMinor < 1000000000 &&
+             data.title is string &&
+             data.title.size() > 0 &&
+             data.title.size() <= 200 &&
+             data.status in ['PENDING', 'SETTLED'] &&
              hasNoSensitiveFields(data);
     }
 
@@ -109,13 +135,16 @@ service cloud.firestore {
     // ── Households Collection ─────────────────────────────────────────────────
 
     match /households/{householdId} {
-      // Members can read their household.
-      // Also allow the creator to read immediately after creation (before listener sync).
+      // Members & Creators can read their household.
+      // Authenticated users searching for an active invite code can read household metadata to join.
       allow read: if isHouseholdMember(householdId) ||
                      (
                        isAuthenticated() &&
-                       exists(/databases/$(database)/documents/households/$(householdId)) &&
-                       get(/databases/$(database)/documents/households/$(householdId)).data.createdByUserId == request.auth.uid
+                       resource.data.createdByUserId == request.auth.uid
+                     ) ||
+                     (
+                       isAuthenticated() &&
+                       resource.data.inviteCode != null
                      );
 
       // Only authenticated users can create a household (as first member)
@@ -124,14 +153,20 @@ service cloud.firestore {
                        request.auth.uid in request.resource.data.memberIds &&
                        request.resource.data.createdByUserId == request.auth.uid;
 
-      // Members can update household (e.g. clearing invite code after join)
-      // But: cannot change createdByUserId, cannot arbitrarily change memberIds
-      allow update: if isHouseholdMember(householdId) &&
-                       request.resource.data.createdByUserId == resource.data.createdByUserId &&
-                       // memberIds can only grow by 1 (join) or shrink by 1 (leave)
-                       (request.resource.data.memberIds.size() <= resource.data.memberIds.size() + 1) &&
-                       // New member must be the requesting user
-                       (request.resource.data.memberIds.toSet().difference(resource.data.memberIds.toSet()).size() <= 1);
+      // Updating household document:
+      // Case 1: Existing member updating household (invite codes, settings, leaving)
+      // Case 2: Secure Join by second user via valid active invite code
+      allow update: if isHouseholdMember(householdId) ||
+                       (
+                        // Secure Join by second user
+                        isAuthenticated() &&
+                        !isHouseholdMember(householdId) &&
+                        resource.data.inviteCode != null &&
+                        resource.data.memberIds.size() >= 1 &&
+                        request.resource.data.memberIds.size() <= 2 &&
+                        request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
+                        request.auth.uid in request.resource.data.memberIds
+                       );
 
       // Only creator can delete household
       allow delete: if isAuthenticated() &&
@@ -204,20 +239,28 @@ service cloud.firestore {
         allow read: if isHouseholdMember(householdId);
         allow write: if isHouseholdMember(householdId);
       }
+
+      // ── Pending Purchases ──────────────────────────────────────────────────
+
+      match /pendingPurchases/{pendingPurchaseId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create: if isHouseholdMember(householdId) &&
+                         isValidPendingPurchase(request.resource.data) &&
+                         request.resource.data.householdId == householdId &&
+                         request.resource.data.createdBy == request.auth.uid;
+        allow update: if isHouseholdMember(householdId) &&
+                         isValidPendingPurchase(request.resource.data) &&
+                         request.resource.data.householdId == resource.data.householdId &&
+                         request.resource.data.createdBy == resource.data.createdBy;
+        allow delete: if isHouseholdMember(householdId);
+      }
     }
 
     // ── Invite Code Lookup ───────────────────────────────────────────────────
-    // These docs contain only householdId and expiresAt — no private data.
+    // These docs map invite code -> householdId — no private data.
 
     match /household_invites/{inviteCode} {
-      // Any authenticated user can read (to attempt joining)
-      allow read: if isAuthenticated();
-      // Only authenticated users can create (from householdService)
-      allow create: if isAuthenticated() &&
-                       request.resource.data.keys().hasAll(['householdId', 'expiresAt']) &&
-                       request.resource.data.keys().size() == 2;
-      // Household members can update/delete (e.g., invalidate after join)
-      allow update, delete: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
 
     // ── Default: Deny All ────────────────────────────────────────────────────

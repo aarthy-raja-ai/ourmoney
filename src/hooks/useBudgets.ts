@@ -12,6 +12,7 @@ interface UseBudgetsResult {
   isLoading: boolean;
   error: string | null;
   retry: () => void;
+  refresh: () => void;
 }
 
 export function useBudgets(month?: string): UseBudgetsResult {
@@ -55,5 +56,5 @@ export function useBudgets(month?: string): UseBudgetsResult {
     {} as Record<string, Budget>,
   );
 
-  return { budgets, budgetsMap, isLoading, error, retry };
+  return { budgets, budgetsMap, isLoading, error, retry, refresh: retry };
 }

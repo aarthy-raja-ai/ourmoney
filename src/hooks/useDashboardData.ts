@@ -40,7 +40,7 @@ export function useDashboardData() {
     const categoryTotals = aggregateByCategory(expenses);
     const topCategories = Object.entries(categoryTotals)
       .map(([catId, amountPaise]) => ({
-        category: getCategoryById(catId),
+        category: getCategoryById(catId as any),
         amountPaise,
         percentage: totalSpentPaise > 0 ? (amountPaise / totalSpentPaise) * 100 : 0,
       }))
@@ -52,7 +52,7 @@ export function useDashboardData() {
       const pct = b.amountPaise > 0 ? (spentPaise / b.amountPaise) * 100 : 0;
       return {
         ...b,
-        category: getCategoryById(b.categoryId),
+        category: getCategoryById(b.categoryId as any),
         spentPaise,
         percentUsed: pct,
         isExceeded: spentPaise >= b.amountPaise,
@@ -60,15 +60,23 @@ export function useDashboardData() {
     });
 
     // 4. Loans summary
-    const activeLoans = loans.filter((l) => l.status === 'active');
-    const totalLoanBalancePaise = activeLoans.reduce((sum, l) => sum + l.currentBalancePaise, 0);
+    const activeLoans = loans.filter((l) => l.isActive);
+    const totalLoanBalancePaise = activeLoans.reduce((sum, l) => sum + (l.outstandingAmountPaise || 0), 0);
     const totalMonthlyEmiPaise = activeLoans.reduce(
-      (sum, l) => sum + (l.minimumPaymentPaise ?? l.monthlyPaymentPaise ?? 0),
+      (sum, l) => sum + (l.plannedPaymentPaise || 0),
       0,
     );
 
     // 5. Smart Insight
-    const insights = generateSpendingInsights(expenses, budgets, currentUserId);
+    const insights = generateSpendingInsights({
+      currentMonthTotalPaise: totalSpentPaise,
+      previousMonthTotalPaise: null,
+      categoryTotals,
+      budgets: {},
+      activeLoansCount: activeLoans.length,
+      totalOutstandingPaise: totalLoanBalancePaise,
+      plannedRepaymentThisMonthPaise: totalMonthlyEmiPaise,
+    });
     const primaryInsight = insights.length > 0 ? insights[0] : null;
 
     return {
@@ -81,7 +89,7 @@ export function useDashboardData() {
       totalLoanBalancePaise,
       totalMonthlyEmiPaise,
       primaryInsight,
-      partnerName: household?.partnerProfile?.displayName ?? 'Partner',
+      partnerName: 'Partner',
     };
   }, [expenses, budgets, loans, user, household, currentMonth]);
 

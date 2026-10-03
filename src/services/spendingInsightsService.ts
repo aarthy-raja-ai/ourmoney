@@ -18,7 +18,21 @@ export interface SpendingInsight {
   detail: string;
   emoji: string;
   isEstimate?: boolean;
+  severity?: 'normal' | 'notice' | 'warning' | 'exceeded';
+  message?: string;
 }
+
+export interface ReflectionInsight {
+  severity: 'normal' | 'notice' | 'warning' | 'exceeded';
+  message: string;
+}
+
+export interface SpendingReflectionResult {
+  highestSeverity: 'normal' | 'notice' | 'warning' | 'exceeded';
+  insights: ReflectionInsight[];
+  nudge: string;
+}
+
 
 export interface AnalyzeExpenseParams {
   categoryId: CategoryId;
@@ -31,7 +45,6 @@ export interface AnalyzeExpenseParams {
   previousMonthTotalPaise: number | null; // previous month total, null if no data
 }
 
-const MINIMUM_HISTORY_MONTHS = 2; // need at least 2 months to compare
 
 /**
  * Main analysis function: evaluates a pending expense and returns a smart insight.
@@ -227,7 +240,7 @@ export function generateDashboardInsights(params: {
     categoryTotals,
     budgets,
     activeLoansCount,
-    plannedRepaymentThisMonthPaise,
+    plannedRepaymentThisMonthPaise: _plannedRepaymentThisMonthPaise,
   } = params;
 
   // Month-over-month spending comparison
@@ -282,3 +295,51 @@ export function generateDashboardInsights(params: {
 
   return insights.slice(0, 3);
 }
+
+/**
+ * Evaluate expense reflection for Add/Edit Expense modal.
+ */
+export function evaluateExpenseReflection(params: {
+  amountPaise: number;
+  categoryId: CategoryId;
+  currentCategorySpentPaise: number;
+  budgetPaise: number | null;
+}): SpendingReflectionResult | null {
+  const { amountPaise, categoryId, currentCategorySpentPaise, budgetPaise } = params;
+  const category = getCategoryById(categoryId);
+
+  if (budgetPaise && budgetPaise > 0) {
+    const afterSpent = currentCategorySpentPaise + amountPaise;
+    const pct = getBudgetPercentage(afterSpent, budgetPaise);
+    const status = getBudgetStatus(afterSpent, budgetPaise);
+
+    if (status === 'exceeded') {
+      return {
+        highestSeverity: 'exceeded',
+        insights: [
+          {
+            severity: 'exceeded',
+            message: `This expense will exceed your monthly budget for ${category.label} (${pct.toFixed(0)}% used).`,
+          },
+        ],
+        nudge: 'Consider if this purchase can be postponed or allocated across other budget categories.',
+      };
+    } else if (status === 'almost' || status === 'heads-up') {
+      return {
+        highestSeverity: 'warning',
+        insights: [
+          {
+            severity: 'warning',
+            message: `This expense brings ${category.label} spending to ${pct.toFixed(0)}% of your budget.`,
+          },
+        ],
+        nudge: 'You are close to your target limit for this category.',
+      };
+    }
+  }
+
+  return null;
+}
+
+export const generateSpendingInsights = generateDashboardInsights;
+

@@ -4,6 +4,7 @@
 export const COLLECTIONS = {
   USERS: 'users',
   HOUSEHOLDS: 'households',
+  HOUSEHOLD_INVITES: 'household_invites',
 } as const;
 
 export const SUBCOLLECTIONS = {
@@ -12,6 +13,7 @@ export const SUBCOLLECTIONS = {
   LOANS: 'loans',
   LOAN_PAYMENTS: 'loanPayments',
   SETTINGS: 'settings',
+  PENDING_PURCHASES: 'pendingPurchases',
 } as const;
 
 // Helper to build subcollection paths
@@ -34,6 +36,10 @@ export const paths = {
     `${COLLECTIONS.HOUSEHOLDS}/${householdId}/${SUBCOLLECTIONS.LOAN_PAYMENTS}`,
   loanPayment: (householdId: string, paymentId: string) =>
     `${COLLECTIONS.HOUSEHOLDS}/${householdId}/${SUBCOLLECTIONS.LOAN_PAYMENTS}/${paymentId}`,
+  pendingPurchases: (householdId: string) =>
+    `${COLLECTIONS.HOUSEHOLDS}/${householdId}/${SUBCOLLECTIONS.PENDING_PURCHASES}`,
+  pendingPurchase: (householdId: string, pendingPurchaseId: string) =>
+    `${COLLECTIONS.HOUSEHOLDS}/${householdId}/${SUBCOLLECTIONS.PENDING_PURCHASES}/${pendingPurchaseId}`,
   householdSettings: (householdId: string) =>
     `${COLLECTIONS.HOUSEHOLDS}/${householdId}/${SUBCOLLECTIONS.SETTINGS}/preferences`,
 };

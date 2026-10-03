@@ -1,27 +1,46 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Button } from './Button';
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
   title: string;
   subtitle?: string;
+  message?: string;
   actionLabel?: string;
   onAction?: () => void;
-  icon?: React.ReactNode;
+  icon?: React.ReactNode | string;
 }
 
-export function EmptyState({ title, subtitle, actionLabel, onAction, icon }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  subtitle,
+  message,
+  actionLabel,
+  onAction,
+  icon,
+}: EmptyStateProps) {
   const { theme } = useTheme();
+  const descriptionText = subtitle ?? message;
+
+  const renderIcon = () => {
+    if (!icon) return null;
+    if (typeof icon === 'string') {
+      return <Ionicons name={icon as any} size={48} color={theme.colors.textTertiary} />;
+    }
+    return icon;
+  };
+
   return (
     <View style={styles.container}>
-      {icon && <View style={styles.iconContainer}>{icon}</View>}
+      {renderIcon() && <View style={styles.iconContainer}>{renderIcon()}</View>}
       <Text style={[styles.title, { color: theme.colors.textPrimary, fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold }]}>
         {title}
       </Text>
-      {subtitle && (
+      {descriptionText && (
         <Text style={[styles.subtitle, { color: theme.colors.textSecondary, fontSize: theme.fontSize.base }]}>
-          {subtitle}
+          {descriptionText}
         </Text>
       )}
       {actionLabel && onAction && (

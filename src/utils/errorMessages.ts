@@ -22,6 +22,10 @@ type ErrorContext =
   | 'loan-delete'
   | 'loan-fetch'
   | 'payment-save'
+  | 'pending-save'
+  | 'pending-settle'
+  | 'pending-delete'
+  | 'pending-fetch'
   | 'generic';
 
 const FIREBASE_ERROR_MAP: Record<string, string> = {
@@ -70,6 +74,10 @@ const CONTEXT_FALLBACK: Record<ErrorContext, string> = {
   'loan-delete': "We couldn't delete that loan. Please try again.",
   'loan-fetch': 'Unable to load loan information.',
   'payment-save': "We couldn't save that payment. Please try again.",
+  'pending-save': "We couldn't save that pending purchase. Please try again.",
+  'pending-settle': "We couldn't mark that item as settled. Please try again.",
+  'pending-delete': "We couldn't delete that pending item. Please try again.",
+  'pending-fetch': 'Unable to load pending purchases.',
   generic: 'Something went wrong. Please try again.',
 };
 
