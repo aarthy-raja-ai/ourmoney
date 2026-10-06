@@ -38,6 +38,7 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withApi36Fix",
       [
         "expo-splash-screen",
         {
