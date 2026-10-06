@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Support & Help Center - OurMoney</title>
+  <style>
+    :root {
+      --bg: #060E1E;
+      --card-bg: #0F1D35;
+      --border: #253352;
+      --primary: #5B7BF3;
+      --primary-light: rgba(91, 123, 243, 0.15);
+      --success: #22C55E;
+      --warning: #F59E0B;
+      --danger: #F43F5E;
+      --text: #F8F9FC;
+      --subtext: #A8B3C8;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    .navbar {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background: var(--primary);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      color: #ffffff;
+    }
+    .brand-name {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
+    .nav-link {
+      color: var(--subtext);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: var(--primary);
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 32px 20px 60px 20px;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .badge {
+      display: inline-block;
+      background-color: var(--primary-light);
+      color: var(--primary);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin: 0 0 12px 0;
+      letter-spacing: -0.5px;
+    }
+    .hero p {
+      color: var(--subtext);
+      font-size: 16px;
+      margin: 0;
+    }
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .contact-card {
+      border-color: var(--primary);
+      background: linear-gradient(180deg, rgba(91, 123, 243, 0.1) 0%, var(--card-bg) 100%);
+    }
+    .contact-email {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--primary);
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .contact-email:hover {
+      text-decoration: underline;
+    }
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 16px 0;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .topic-icon {
+      font-size: 20px;
+    }
+    p, li {
+      color: var(--subtext);
+      font-size: 15px;
+    }
+    ul, ol {
+      margin: 0 0 12px 0;
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .btn {
+      display: inline-block;
+      background-color: var(--primary);
+      color: #ffffff;
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      margin-top: 12px;
+      transition: opacity 0.2s;
+    }
+    .btn:hover {
+      opacity: 0.9;
+      text-decoration: none;
+    }
+    .btn-secondary {
+      background-color: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      margin-left: 8px;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--subtext);
+      font-size: 13px;
+    }
+    .footer a {
+      color: var(--subtext);
+    }
+    .footer a:hover {
+      color: var(--primary);
+    }
+    @media (max-width: 600px) {
+      .navbar {
+        padding: 12px 16px;
+      }
+      .nav-links {
+        gap: 10px;
+      }
+      .nav-link {
+        font-size: 13px;
+      }
+      .container {
+        padding: 24px 16px 40px 16px;
+      }
+      h1 {
+        font-size: 26px;
+      }
+      .contact-email {
+        font-size: 17px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <a href="index.html" class="brand">
+      <div class="brand-logo">OM</div>
+      <div class="brand-name">OurMoney</div>
+    </a>
+    <div class="nav-links">
+      <a href="privacy-policy.html" class="nav-link">Privacy Policy</a>
+      <a href="support.html" class="nav-link active">Support</a>
+      <a href="delete-account.html" class="nav-link">Account Deletion</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="hero">
+      <div class="badge">OURMONEY HELP CENTER</div>
+      <h1>OurMoney Support</h1>
+      <p>Get assistance with your household financial workspace, partner synchronization, budgets, and loans.</p>
+    </div>
+
+    <!-- Contact Support Card -->
+    <div class="card contact-card">
+      <h2>📬 Contact Support</h2>
+      <p>Have questions, issues, or feedback? Reach out to our official support team directly at:</p>
+      <p style="margin: 16px 0;">
+        <a href="mailto:ourmoney.support@gmail.com" class="contact-email">ourmoney.support@gmail.com</a>
+      </p>
+      <p style="margin: 0; font-size: 13px; color: var(--subtext);">
+        We process support inquiries promptly and typically respond within 24 to 48 business hours.
+      </p>
+    </div>
+
+    <!-- About OurMoney -->
+    <div class="card">
+      <h2>ℹ️ About OurMoney</h2>
+      <p>OurMoney is a modern, privacy-focused household financial management app designed for couples and individuals. It empowers households to track shared expenses, manage category budgets, monitor active loans and EMIs, and view real-time spending insights without exposing bank credentials or sensitive account numbers.</p>
+    </div>
+
+    <!-- Common Help Topics -->
+    <div class="card">
+      <h2>🔐 1. Account & Login Help</h2>
+      <ul>
+        <li><strong>Signing Up:</strong> You can create an account using your email address and a secure password.</li>
+        <li><strong>Login Issues:</strong> If you are unable to log in, ensure your credentials are typed correctly. Use the "Forgot Password" link on the sign-in screen to receive a password reset link.</li>
+        <li><strong>Profile Updates:</strong> You can update your display name anytime in the app under <strong>Settings → Profile</strong>.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>🏡 2. Household & Partner Connection</h2>
+      <ul>
+        <li><strong>Household Workspace:</strong> OurMoney allows you to operate in "Solo Mode" or link with a partner in a shared workspace.</li>
+        <li><strong>Connecting a Partner:</strong> The workspace owner generates a 6-character invite code under <strong>Settings → Household Workspace</strong>. The joining partner enters this code under <strong>Join Household</strong>.</li>
+        <li><strong>Real-Time Synchronization:</strong> Once connected, both partners can instantly log and view household expenses, budgets, and loans.</li>
+        <li><strong>Leaving a Household:</strong> You can leave a workspace at any time under <strong>Settings → Household Workspace → Leave Household Workspace</strong>.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>💳 3. Expenses & Transactions</h2>
+      <ul>
+        <li><strong>Logging Expenses:</strong> Tap the <strong>+</strong> button from the Home or Transactions tab to add an expense with amount, category, payment method, date, and notes.</li>
+        <li><strong>Payment Methods:</strong> Choose from Cash, UPI, Credit Card, Bank Transfer, or Other.</li>
+        <li><strong>Payment Status:</strong> Track entries as <strong>Paid</strong> or <strong>Credit/Pending</strong>. You can mark credit entries as settled whenever settled.</li>
+        <li><strong>Editing & Deleting:</strong> Tap any expense in the transaction list to view details, update, or delete it.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>📊 4. Budgets</h2>
+      <ul>
+        <li><strong>Setting Category Budgets:</strong> Navigate to <strong>Insights → Budget Progress → Manage</strong> to set target monthly spending limits for categories like Food, Groceries, Transport, and Bills.</li>
+        <li><strong>Budget Utilization Indicators:</strong>
+          <ul>
+            <li><strong style="color: var(--success);">&lt; 70%:</strong> Normal spending pace</li>
+            <li><strong style="color: var(--warning);">70% - 90%:</strong> Heads-up notice</li>
+            <li><strong style="color: var(--warning);">90% - 100%:</strong> Target almost reached</li>
+            <li><strong style="color: var(--danger);">&gt; 100%:</strong> Budget target exceeded</li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>🏦 5. Loans & EMIs</h2>
+      <ul>
+        <li><strong>Tracking Loans:</strong> Log active loans (e.g. Home Loan, Gold Loan, EMI, Personal Loan) under the <strong>Loans</strong> tab.</li>
+        <li><strong>Privacy Protection:</strong> OurMoney tracks balances and terms for planning only. Never enter bank account numbers, passwords, or sensitive account credentials.</li>
+        <li><strong>Recording Payments:</strong> Select any loan card and tap <strong>Record Payment</strong> to log EMIs or principal prepayments.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>🗑️ 6. Account & Data Deletion</h2>
+      <p>You have full ownership of your data and can permanently delete your account and household records at any time.</p>
+      <ul>
+        <li><strong>In-App Deletion:</strong> Open the OurMoney mobile app and navigate to <strong>Settings → Privacy & Data Security → Delete Account</strong>.</li>
+        <li><strong>Web Deletion Request:</strong> If you no longer have access to the app, you can submit a manual deletion request on our dedicated web page:</li>
+      </ul>
+      <p style="margin-top: 16px;">
+        <a href="delete-account.html" class="btn">Go to Account Deletion Page</a>
+        <a href="/ourmoney/delete-account.html" class="btn btn-secondary">Direct URL Link</a>
+      </p>
+    </div>
+
+    <!-- Direct Links -->
+    <div class="card">
+      <h2>🔗 Important Legal Links</h2>
+      <p>Review our legal policies and data security guidelines:</p>
+      <ul>
+        <li><a href="privacy-policy.html">OurMoney Privacy Policy</a> (or <a href="/ourmoney/privacy-policy.html">/ourmoney/privacy-policy.html</a>)</li>
+        <li><a href="delete-account.html">Account & Data Deletion Portal</a> (or <a href="/ourmoney/delete-account.html">/ourmoney/delete-account.html</a>)</li>
+      </ul>
+    </div>
+
+    <div class="footer">
+      &copy; 2026 OurMoney. All rights reserved. • <a href="privacy-policy.html">Privacy Policy</a> • <a href="delete-account.html">Account Deletion</a> • <a href="support.html">Support</a>
+    </div>
+  </div>
+</body>
+</html>

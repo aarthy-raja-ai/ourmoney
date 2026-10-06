@@ -2,8 +2,9 @@
 // Full Play Store compliant Privacy Policy detailing data collection, processing, storage, and rights.
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { Card } from '../../src/components/Card';
@@ -11,11 +12,16 @@ import { Card } from '../../src/components/Card';
 export default function PrivacyPolicyModal() {
   const { theme, isDark } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0,
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.colors.borderLight }]}>
+      <View style={[styles.header, { paddingTop: topInset + 6, borderBottomColor: theme.colors.borderLight }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
         </TouchableOpacity>
@@ -204,7 +210,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    height: 56,
+    paddingBottom: 12,
     borderBottomWidth: 1,
   },
   closeButton: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },

@@ -1,5 +1,5 @@
 // OurMoney — Household Context
-// Provides real-time household data, members, and loading/error states.
+// Provides real-time household data, members, partner status, and loading/error states.
 
 import React, {
   createContext,
@@ -11,6 +11,7 @@ import React, {
   useRef,
   type ReactNode,
 } from 'react';
+import { Timestamp } from 'firebase/firestore';
 import { subscribeToHousehold, getMemberProfiles } from '../services/householdService';
 import type { Household, HouseholdMember } from '../models/household';
 import { useAuth } from './AuthContext';
@@ -18,8 +19,9 @@ import { useAuth } from './AuthContext';
 interface HouseholdContextValue {
   household: Household | null;
   members: HouseholdMember[];
-  partner: HouseholdMember | null; // the OTHER member (null in solo mode)
+  partner: HouseholdMember | null; // the OTHER member (null in solo mode or when 1 member)
   isSolo: boolean; // true when household was created in "Just me" mode
+  isPartnerLinked: boolean; // true when 2 valid members exist in household
   isLoading: boolean;
   error: string | null;
   householdId: string | null;
@@ -38,7 +40,6 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const prevMemberIdsRef = useRef<string[]>([]);
-
   const householdId = userProfile?.householdId ?? null;
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -46,7 +47,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   const leaveHousehold = useCallback(async () => {
     if (!firebaseUser || !householdId) return;
     const { leaveHousehold: leaveService } = await import('../services/householdService');
-    await leaveService(householdId, firebaseUser.uid);
+    await leaveService(firebaseUser.uid, householdId);
   }, [firebaseUser, householdId]);
 
   useEffect(() => {
@@ -64,36 +65,67 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
       householdId,
       async (h) => {
         setHousehold(h);
-        if (h && h.memberIds) {
+        if (h && h.memberIds && h.memberIds.length > 0) {
           const idsChanged =
             h.memberIds.length !== prevMemberIdsRef.current.length ||
             h.memberIds.some((id, idx) => id !== prevMemberIdsRef.current[idx]);
 
-          if (idsChanged || members.length === 0) {
+          if (idsChanged || members.length !== h.memberIds.length) {
+            prevMemberIdsRef.current = h.memberIds;
             try {
-              prevMemberIdsRef.current = h.memberIds;
               const memberProfiles = await getMemberProfiles(h.memberIds);
               setMembers(memberProfiles);
             } catch (e) {
-              // Non-critical: member profiles failed to load
+              console.warn('[HouseholdContext] Profile fetch notice:', e);
+              setMembers(
+                h.memberIds.map((uid) => ({
+                  userId: uid,
+                  displayName:
+                    uid === firebaseUser?.uid
+                      ? (userProfile?.displayName ?? 'Me')
+                      : 'Partner',
+                  joinedAt: Timestamp.now(),
+                }))
+              );
             }
           }
+        } else {
+          setMembers([]);
         }
         setIsLoading(false);
       },
       (err) => {
+        console.error('[HouseholdContext] Firestore listener error:', err);
         setError(err.message);
         setIsLoading(false);
       },
     );
 
     return unsubscribe;
-  }, [householdId, refreshKey]);
+  }, [householdId, refreshKey, firebaseUser?.uid, userProfile?.displayName]);
 
-  const partner = useMemo(
-    () => members.find((m) => m.userId !== firebaseUser?.uid) ?? null,
-    [members, firebaseUser?.uid]
-  );
+  // Primary realtime source of truth for partner linked status: 2 member IDs in household.memberIds
+  const isPartnerLinked = Boolean(household?.memberIds && household.memberIds.length >= 2);
+
+  // Compute partner: member in household.memberIds that is NOT the current user
+  const partner = useMemo(() => {
+    if (!isPartnerLinked || !household?.memberIds) {
+      return null;
+    }
+    const currentUid = firebaseUser?.uid ?? '';
+    const partnerUid = household.memberIds.find((id) => id !== currentUid);
+    if (!partnerUid) return null;
+
+    const loadedProfile = members.find((m) => m.userId === partnerUid);
+    if (loadedProfile) return loadedProfile;
+
+    return {
+      userId: partnerUid,
+      displayName: 'Partner',
+      joinedAt: Timestamp.now(),
+    } as HouseholdMember;
+  }, [isPartnerLinked, household?.memberIds, members, firebaseUser?.uid]);
+
   const isSolo = household?.isSolo === true;
 
   return (
@@ -103,6 +135,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
         members,
         partner,
         isSolo,
+        isPartnerLinked,
         isLoading,
         error,
         householdId,

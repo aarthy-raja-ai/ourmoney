@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  ScrollView, View, Text, StyleSheet, SafeAreaView,
+  ScrollView, View, Text, StyleSheet,
   TouchableOpacity, TextInput, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -20,9 +20,18 @@ import { formatGroupHeader, formatDateKey, getCurrentMonth } from '../../src/uti
 import { Search, X, Plus, FilterX } from 'lucide-react-native';
 import { Timestamp } from 'firebase/firestore';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform, StatusBar } from 'react-native';
+
 export default function TransactionsScreen() {
   const { theme } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0,
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryId | 'all'>('all');
@@ -65,7 +74,7 @@ export default function TransactionsScreen() {
   const hasActiveFilters = searchQuery !== '' || selectedCategory !== 'all';
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.safe, { backgroundColor: theme.colors.background, paddingTop: topInset }]}>
       <View style={styles.container}>
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: theme.colors.separator }]}>
@@ -291,7 +300,7 @@ export default function TransactionsScreen() {
           <Plus size={26} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

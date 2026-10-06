@@ -15,12 +15,13 @@ import { Card } from '../../src/components/Card';
 import { Badge } from '../../src/components/Badge';
 import { Button } from '../../src/components/Button';
 import { ConfirmDialog } from '../../src/components/ConfirmDialog';
+import { LoadingSpinner } from '../../src/components/LoadingSpinner';
 
 export default function HouseholdSettingsScreen() {
   const { theme, isDark } = useTheme();
   const router = useRouter();
   const { user } = useAuth();
-  const { household, partner, leaveHousehold } = useHousehold();
+  const { household, partner, isPartnerLinked, isLoading, leaveHousehold } = useHousehold();
 
   const [showConfirmLeave, setShowConfirmLeave] = useState(false);
   const [showConfirmRegenerate, setShowConfirmRegenerate] = useState(false);
@@ -106,26 +107,29 @@ export default function HouseholdSettingsScreen() {
         </View>
       )}
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {/* Workspace Card */}
-        <Card style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View>
-              <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
-                HOUSEHOLD WORKSPACE
-              </Text>
-              <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-                {isOwner ? 'Workspace Owner' : 'Household Member'}
-              </Text>
+      {isLoading ? (
+        <LoadingSpinner message="Checking household..." />
+      ) : (
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          {/* Workspace Card */}
+          <Card style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
+                  HOUSEHOLD WORKSPACE
+                </Text>
+                <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+                  {isOwner ? 'Workspace Owner' : 'Household Member'}
+                </Text>
+              </View>
+              <Badge
+                label={isPartnerLinked ? 'Partner Linked' : 'Waiting for Partner'}
+                variant={isPartnerLinked ? 'success' : 'warning'}
+              />
             </View>
-            <Badge
-              label={partner ? 'Shared Workspace' : 'Waiting for Partner'}
-              variant={partner ? 'success' : 'warning'}
-            />
-          </View>
 
-          {/* Invite Code Display section for Owner / Solo state */}
-          {(!partner && rawCode) ? (
+            {/* Invite Code Display section for Owner / Solo state when partner is not linked */}
+            {(!isPartnerLinked && rawCode) ? (
             <View style={[styles.inviteBox, { backgroundColor: isDark ? '#162032' : theme.colors.borderLight }]}>
               <Text style={[styles.inviteLabel, { color: theme.colors.textSecondary }]}>
                 Invite Code
@@ -178,7 +182,7 @@ export default function HouseholdSettingsScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          ) : (!partner && isOwner) ? (
+          ) : (!isPartnerLinked && isOwner) ? (
             <View style={[styles.inviteBox, { backgroundColor: isDark ? '#162032' : theme.colors.borderLight }]}>
               <Text style={[styles.inviteLabel, { color: theme.colors.textSecondary }]}>
                 Invite Code
@@ -199,11 +203,11 @@ export default function HouseholdSettingsScreen() {
         {/* Partner Section */}
         <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Partner Link</Text>
         <Card style={styles.card}>
-          {partner ? (
+          {isPartnerLinked && partner ? (
             <View style={styles.partnerRow}>
               <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
                 <Text style={styles.avatarText}>
-                  {partner.displayName.charAt(0).toUpperCase()}
+                  {partner.displayName ? partner.displayName.charAt(0).toUpperCase() : 'P'}
                 </Text>
               </View>
               <View style={{ marginLeft: 12, flex: 1 }}>
@@ -222,7 +226,9 @@ export default function HouseholdSettingsScreen() {
                 No partner linked yet
               </Text>
               <Text style={[styles.soloSub, { color: theme.colors.textSecondary }]}>
-                Share invite code <Text style={{ fontWeight: '700', color: theme.colors.primary }}>{rawCode}</Text> with your partner to share financial management.
+                {rawCode
+                  ? `Share invite code ${rawCode} with your partner to share financial management.`
+                  : 'Generate or share an invite code to connect with your partner.'}
               </Text>
             </View>
           )}
@@ -237,6 +243,7 @@ export default function HouseholdSettingsScreen() {
           />
         </View>
       </ScrollView>
+      )}
 
       {/* Confirm Regenerate Dialog */}
       <ConfirmDialog

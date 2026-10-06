@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, type ViewStyle } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 
 export interface ScreenHeaderProps {
@@ -21,8 +22,15 @@ export interface ScreenHeaderProps {
 
 export function ScreenHeader({ title, subtitle, leftAction, rightAction, style }: ScreenHeaderProps) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0,
+  );
+
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, { paddingTop: topInset + 6 }, style]}>
       <View style={styles.side}>
         {leftAction && (
           <TouchableOpacity
@@ -64,7 +72,7 @@ export function ScreenHeader({ title, subtitle, leftAction, rightAction, style }
 }
 
 const styles = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  container: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
   side: { width: 44, alignItems: 'center' },
   center: { flex: 1, alignItems: 'center' },
   title: {},

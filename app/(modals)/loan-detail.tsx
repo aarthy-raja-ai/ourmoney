@@ -2,8 +2,9 @@
 // Shows loan balance, payoff metrics, payment history log, and record payment triggers.
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, StatusBar } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useHousehold } from '../../src/context/HouseholdContext';
@@ -24,6 +25,11 @@ import type { LoanPayment } from '../../src/models/loanPayment';
 export default function LoanDetailModal() {
   const { theme } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0,
+  );
   const { id } = useLocalSearchParams<{ id: string }>();
   const { householdId } = useHousehold();
   const { loans } = useLoans();
@@ -84,7 +90,7 @@ export default function LoanDetailModal() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.colors.borderLight }]}>
+      <View style={[styles.header, { paddingTop: topInset + 6, borderBottomColor: theme.colors.borderLight }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
         </TouchableOpacity>
@@ -220,7 +226,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    height: 56,
+    paddingBottom: 12,
     borderBottomWidth: 1,
   },
   closeButton: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },

@@ -415,20 +415,35 @@ export async function getMemberProfiles(
   try {
     const profiles = await Promise.all(
       memberIds.map(async (uid) => {
-        const snap = await getDoc(doc(db, COLLECTIONS.USERS, uid));
-        if (!snap.exists()) return null;
-        const data = snap.data();
+        try {
+          const snap = await getDoc(doc(db, COLLECTIONS.USERS, uid));
+          if (snap.exists()) {
+            const data = snap.data();
+            return {
+              userId: uid,
+              displayName: data.displayName ?? 'Partner',
+              photoUrl: data.photoUrl,
+              joinedAt: data.createdAt ?? Timestamp.now(),
+            } as HouseholdMember;
+          }
+        } catch (err) {
+          console.log('[getMemberProfiles] Notice: Profile read restricted for uid:', uid);
+        }
         return {
           userId: uid,
-          displayName: data.displayName ?? 'Unknown',
-          photoUrl: data.photoUrl,
-          joinedAt: data.createdAt ?? Timestamp.now(),
+          displayName: 'Partner',
+          joinedAt: Timestamp.now(),
         } as HouseholdMember;
       }),
     );
-    return profiles.filter((p): p is HouseholdMember => p !== null);
+    return profiles;
   } catch (error) {
-    throw new Error(toUserFriendlyError(error, 'household-fetch'));
+    console.error('[getMemberProfiles] Fallback:', error);
+    return memberIds.map((uid) => ({
+      userId: uid,
+      displayName: 'Partner',
+      joinedAt: Timestamp.now(),
+    }));
   }
 }
 

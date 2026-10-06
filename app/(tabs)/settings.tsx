@@ -32,7 +32,7 @@ import { Badge } from '../../src/components/Badge';
 export default function SettingsScreen() {
   const { theme, colorScheme, setColorScheme } = useTheme();
   const { user, userProfile, signOut } = useAuth();
-  const { household: _household, partner, isSolo } = useHousehold();
+  const { household: _household, partner, isPartnerLinked, isSolo } = useHousehold();
   const router = useRouter();
 
   const [isSignOutLoading, setIsSignOutLoading] = useState(false);
@@ -90,14 +90,14 @@ export default function SettingsScreen() {
               <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary }]}>
                 {isSolo
                   ? 'Solo mode — tap to invite a partner'
-                  : partner
-                    ? `Linked with ${partner.displayName}`
+                  : isPartnerLinked
+                    ? `Linked with ${partner?.displayName ?? 'Partner'}`
                     : 'Waiting for partner to join'}
               </Text>
             </View>
             <Badge
-              label={isSolo ? 'Solo' : partner ? 'Linked' : 'Pending'}
-              variant={isSolo ? 'neutral' : partner ? 'success' : 'warning'}
+              label={isSolo ? 'Solo' : isPartnerLinked ? 'Linked' : 'Pending'}
+              variant={isSolo ? 'neutral' : isPartnerLinked ? 'success' : 'warning'}
               size="sm"
             />
           </View>

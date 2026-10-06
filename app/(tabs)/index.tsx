@@ -9,7 +9,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   RefreshControl,
   Alert,
@@ -65,11 +64,20 @@ function getGreeting(): string {
   return 'Good evening 👋';
 }
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform, StatusBar } from 'react-native';
+
 export default function HomeScreen() {
   const { theme } = useTheme();
   const { firebaseUser } = useAuth();
   const { householdId } = useHousehold();
   const currentMonth = getCurrentMonth();
+  const insets = useSafeAreaInsets();
+
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0,
+  );
 
   const { expenses, isLoading: expensesLoading, error: expensesError, retry } = useExpenses({ month: currentMonth });
   const { budgetsMap, isLoading: budgetsLoading } = useBudgets(currentMonth);
@@ -173,7 +181,7 @@ export default function HomeScreen() {
   const greeting = getGreeting();
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.safe, { backgroundColor: theme.colors.background, paddingTop: topInset }]}>
       <View style={styles.container}>
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -628,7 +636,7 @@ export default function HomeScreen() {
           isLoading={isSettling}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -44,3 +44,7 @@ coverage/
 
 expo-env.d.ts
 # @end expo-cli
+# Android signing credentials
+*.jks
+*.keystore
+*.pem
