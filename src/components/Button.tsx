@@ -68,6 +68,8 @@ export function Button({
     const base: TextStyle = {
       fontSize: size === 'sm' ? theme.fontSize.sm : size === 'lg' ? theme.fontSize.md : theme.fontSize.base,
       fontWeight: theme.fontWeight.semibold,
+      textAlign: 'center',
+      flexShrink: 1,
     };
     switch (variant) {
       case 'primary':
@@ -97,7 +99,14 @@ export function Button({
           color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : theme.colors.primary}
         />
       ) : (
-        <Text style={[getTextStyle(), textStyle]}>{title}</Text>
+        <Text
+          style={[getTextStyle(), textStyle]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+        >
+          {title}
+        </Text>
       )}
     </TouchableOpacity>
   );
