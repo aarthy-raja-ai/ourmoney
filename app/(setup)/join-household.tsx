@@ -55,7 +55,7 @@ export default function JoinHouseholdScreen() {
       await joinHousehold(firebaseUser.uid, trimmed);
       await refreshProfile();
       Alert.alert('Success', 'Household joined successfully');
-      router.replace('/(tabs)/');
+      router.replace('/(tabs)');
     } catch (e: any) {
       const msg = e?.message || '';
       console.log('[INVITE_DEBUG] Join Household caught error:', msg);

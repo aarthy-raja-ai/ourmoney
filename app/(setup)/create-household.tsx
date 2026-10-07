@@ -45,7 +45,7 @@ export default function CreateHouseholdScreen() {
     });
   };
 
-  const handleContinue = () => router.replace('/(tabs)/');
+  const handleContinue = () => router.replace('/(tabs)');
 
   if (inviteCode) {
     return (

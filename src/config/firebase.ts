@@ -1,8 +1,14 @@
 // OurMoney — Firebase Initialization
 // Initializes Firebase app, Auth with AsyncStorage persistence, and Firestore.
 
-import { initializeApp, getApps } from 'firebase/app';
-import * as FirebaseAuth from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  initializeAuth,
+  getAuth,
+  // @ts-ignore getReactNativePersistence is exported by React Native entry point of firebase/auth
+  getReactNativePersistence,
+  type Auth,
+} from 'firebase/auth';
 import {
   getFirestore,
   initializeFirestore,
@@ -28,17 +34,23 @@ try {
 }
 
 // Prevent multiple app initialization on Metro fast-refresh
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Safe Auth initialization with React Native persistence (AsyncStorage)
-let authInstance: FirebaseAuth.Auth;
+let authInstance: Auth;
 try {
-  const getPersistence = (FirebaseAuth as any).getReactNativePersistence;
-  authInstance = FirebaseAuth.initializeAuth(app, {
-    persistence: getPersistence ? getPersistence(AsyncStorage) : undefined,
+  authInstance = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
   });
-} catch {
-  authInstance = FirebaseAuth.getAuth(app);
+} catch (error: any) {
+  if (
+    error?.code === 'auth/already-initialized' ||
+    (typeof error?.message === 'string' && error.message.includes('already-initialized'))
+  ) {
+    authInstance = getAuth(app);
+  } else {
+    throw error;
+  }
 }
 
 // Safe Firestore initialization with React Native memory cache (eliminates IndexedDB warning)
@@ -54,4 +66,3 @@ try {
 export const auth = authInstance;
 export const db = dbInstance;
 export default app;
-

@@ -56,7 +56,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     ) {
       // Logged in with household → home dashboard
       redirectingRef.current = true;
-      router.replace('/(tabs)/');
+      router.replace('/(tabs)');
     }
   }, [isAuthenticated, isLoading, profileLoaded, userProfile, userProfile?.householdId, segments]);
 
