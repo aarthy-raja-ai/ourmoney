@@ -2,7 +2,7 @@
 // Allows logging household expenses with category, payment method, split, notes,
 // and runs smart reflection analysis prior to saving.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Alert,
   Platform,
   StatusBar,
+  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,11 +24,14 @@ import { useExpenses } from '../../src/hooks/useExpenses';
 import { useBudgets } from '../../src/hooks/useBudgets';
 import { addExpense } from '../../src/services/expenseService';
 import { evaluateExpenseReflection, SpendingReflectionResult } from '../../src/services/spendingInsightsService';
+import { getVendorMappings, saveVendorMapping } from '../../src/services/vendorService';
+import { categorizeExpense, type CategorySuggestion, type VendorMapping } from '../../src/utils/smartCategorizer';
 import { Input } from '../../src/components/Input';
 import { Button } from '../../src/components/Button';
 import { CategoryIcon } from '../../src/components/CategoryIcon';
+import { Badge } from '../../src/components/Badge';
 import { SpendingReflectionModal } from '../../src/components/SpendingReflectionModal';
-import { CATEGORIES, getCategoryById } from '../../src/constants/categories';
+import { CATEGORIES, getCategoryById, getSubcategoryLabel, type MainCategoryId, type CategoryId } from '../../src/constants/categories';
 import { PAYMENT_METHODS } from '../../src/constants/paymentMethods';
 import { rupeesToPaise } from '../../src/utils/currency';
 import { getCurrentDateString, getCurrentMonth } from '../../src/utils/dateUtils';
@@ -40,6 +44,7 @@ import {
   MoreHorizontal,
   Check,
   Clock,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -52,7 +57,6 @@ const PAYMENT_ICON_MAP: Record<string, LucideIcon> = {
 };
 
 import { Timestamp } from 'firebase/firestore';
-import type { CategoryId } from '../../src/constants/categories';
 
 export default function AddExpenseModal() {
   const { theme, isDark } = useTheme();
@@ -76,17 +80,60 @@ export default function AddExpenseModal() {
 
   const [amountRupees, setAmountRupees] = useState('');
   const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState<CategoryId>('groceries');
+  const [categoryId, setCategoryId] = useState<CategoryId>('food_dining');
+  const [subcategoryId, setSubcategoryId] = useState<string | undefined>('groceries');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'credit'>('paid');
   const [notes, setNotes] = useState('');
   const [date, _setDate] = useState(getCurrentDateString());
 
+  const [vendorMappings, setVendorMappings] = useState<Record<string, VendorMapping>>({});
+  const [suggestion, setSuggestion] = useState<CategorySuggestion | null>(null);
+  const [isAutoCategorized, setIsAutoCategorized] = useState(false);
+  const [rememberVendorPreference, setRememberVendorPreference] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [reflectionResult, setReflectionResult] = useState<SpendingReflectionResult | null>(null);
   const [showReflectionModal, setShowReflectionModal] = useState(false);
 
+  // Fetch household vendor category preferences
+  useEffect(() => {
+    if (householdId) {
+      getVendorMappings(householdId).then(setVendorMappings).catch(console.warn);
+    }
+  }, [householdId]);
+
+  // Real-time auto-categorization when title or notes change
+  useEffect(() => {
+    if (!description.trim()) {
+      setSuggestion(null);
+      setIsAutoCategorized(false);
+      return;
+    }
+
+    const sug = categorizeExpense(description, notes, vendorMappings);
+    if (sug.confidence !== 'low') {
+      setSuggestion(sug);
+      setCategoryId(sug.categoryId);
+      setSubcategoryId(sug.subcategoryId);
+      setIsAutoCategorized(true);
+    } else {
+      setSuggestion(null);
+      setIsAutoCategorized(false);
+    }
+  }, [description, notes, vendorMappings]);
+
   const parsedAmountPaise = rupeesToPaise(parseFloat(amountRupees) || 0);
+
+  const selectedCategoryObj = getCategoryById(categoryId);
+
+  const handleCategorySelect = (catId: CategoryId) => {
+    setCategoryId(catId);
+    setIsAutoCategorized(false);
+    // Reset subcategory to first available in selected category
+    const catObj = getCategoryById(catId);
+    setSubcategoryId(catObj.subcategories[0]?.id);
+  };
 
   const handleAttemptSave = () => {
     if (!amountRupees || parsedAmountPaise <= 0) {
@@ -132,6 +179,8 @@ export default function AddExpenseModal() {
         amountPaise: parsedAmountPaise,
         description: description.trim(),
         categoryId,
+        subcategoryId,
+        autoCategorized: isAutoCategorized,
         paidByUserId: user.uid,
         paidByUserName: userProfile?.displayName ?? 'Me',
         paymentMethod,
@@ -139,6 +188,13 @@ export default function AddExpenseModal() {
         date: Timestamp.fromDate(new Date(date)),
         notes: notes.trim() || undefined,
       });
+
+      // Save vendor mapping preference if requested
+      if (rememberVendorPreference && description.trim()) {
+        saveVendorMapping(householdId, description, categoryId as MainCategoryId, subcategoryId).catch(
+          (err) => console.warn('[AddExpense] Failed to save vendor mapping:', err),
+        );
+      }
 
       setShowReflectionModal(false);
       router.back();
@@ -188,7 +244,7 @@ export default function AddExpenseModal() {
         {/* 2. Title / Description Input */}
         <Input
           label="Expense Title / Vendor"
-          placeholder="e.g. Weekly Groceries, Electricity Bill"
+          placeholder="e.g. Aavin Milk, Fuel, Swiggy, Electricity Bill"
           placeholderTextColor={formPlaceholderTextColor}
           value={description}
           onChangeText={setDescription}
@@ -197,8 +253,23 @@ export default function AddExpenseModal() {
           cursorColor={formCursorColor}
         />
 
-        {/* 3. Category Selection */}
-        <Text style={[styles.fieldLabel, { color: theme.colors.textPrimary }]}>Category</Text>
+        {/* Smart Auto-Categorization Suggestion Banner */}
+        {suggestion && (
+          <View style={[styles.suggestionBanner, { backgroundColor: theme.colors.primaryLight }]}>
+            <Sparkles size={16} color={theme.colors.primary} />
+            <Text style={[styles.suggestionText, { color: theme.colors.primary }]}>
+              {suggestion.isLearned ? 'Learned for vendor: ' : 'Suggested: '}
+              <Text style={{ fontWeight: '700' }}>
+                {selectedCategoryObj.label}
+                {subcategoryId ? ` / ${getSubcategoryLabel(categoryId, subcategoryId)}` : ''}
+              </Text>
+            </Text>
+            <Badge label="Auto" variant="primary" size="sm" />
+          </View>
+        )}
+
+        {/* 3. Main Category Selection */}
+        <Text style={[styles.fieldLabel, { color: theme.colors.textPrimary }]}>Main Category</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
           {CATEGORIES.map((cat) => {
             const isSelected = categoryId === cat.id;
@@ -212,7 +283,7 @@ export default function AddExpenseModal() {
                     borderColor: isSelected ? cat.color : theme.colors.border,
                   },
                 ]}
-                onPress={() => setCategoryId(cat.id as CategoryId)}
+                onPress={() => handleCategorySelect(cat.id)}
               >
                 <CategoryIcon
                   category={cat}
@@ -232,6 +303,62 @@ export default function AddExpenseModal() {
             );
           })}
         </ScrollView>
+
+        {/* Subcategory Selection (Optional) */}
+        {selectedCategoryObj.subcategories.length > 0 && (
+          <View style={{ marginBottom: 12 }}>
+            <Text style={[styles.subfieldLabel, { color: theme.colors.textSecondary }]}>
+              Subcategory (Optional)
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {selectedCategoryObj.subcategories.map((sub) => {
+                const isSubSelected = subcategoryId === sub.id;
+                return (
+                  <TouchableOpacity
+                    key={sub.id}
+                    style={[
+                      styles.subPill,
+                      {
+                        backgroundColor: isSubSelected ? theme.colors.primaryLight : theme.colors.surface,
+                        borderColor: isSubSelected ? theme.colors.primary : theme.colors.border,
+                      },
+                    ]}
+                    onPress={() => setSubcategoryId(isSubSelected ? undefined : sub.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.subPillText,
+                        { color: isSubSelected ? theme.colors.primary : theme.colors.textPrimary },
+                      ]}
+                    >
+                      {sub.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Remember Vendor Category Toggle */}
+        {description.trim().length >= 2 && (
+          <View style={[styles.rememberRow, { backgroundColor: theme.colors.surfaceElevated }]}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={[styles.rememberTitle, { color: theme.colors.textPrimary }]}>
+                Remember this category for "{description.trim()}"
+              </Text>
+              <Text style={[styles.rememberSub, { color: theme.colors.textSecondary }]}>
+                Automatically suggest this category for future transactions with this vendor.
+              </Text>
+            </View>
+            <Switch
+              value={rememberVendorPreference}
+              onValueChange={setRememberVendorPreference}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+              thumbColor="#FFF"
+            />
+          </View>
+        )}
 
         {/* 4. Payment Method Selection */}
         <Text style={[styles.fieldLabel, { color: theme.colors.textPrimary }]}>Payment Method</Text>
@@ -478,5 +605,49 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 14,
+  },
+  suggestionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  suggestionText: {
+    fontSize: 12,
+    flex: 1,
+  },
+  subfieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  subPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginRight: 6,
+  },
+  subPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 12,
+    marginVertical: 10,
+  },
+  rememberTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  rememberSub: {
+    fontSize: 11,
+    marginTop: 2,
   },
 });

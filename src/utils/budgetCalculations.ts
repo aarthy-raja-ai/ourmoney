@@ -2,6 +2,7 @@
 // All amounts in PAISE. All calculations are deterministic.
 
 import type { BudgetStatus } from '../models/budget';
+import { getNormalizedCategory } from '../constants/categories';
 
 /**
  * Determine budget status from spent vs budget amounts (both in paise).
@@ -68,18 +69,21 @@ export function getBudgetStatusMessage(
 
 /**
  * Aggregate expenses by category for a given month.
- * Returns a map of categoryId → total paise.
+ * If options.normalize is true, legacy categories (e.g., 'food', 'groceries') are mapped to main category IDs.
+ * Returns a map of categoryId -> total paise.
  */
 export function aggregateByCategory(
   expenses: Array<{ categoryId: string; amountPaise: number }>,
+  options?: { normalize?: boolean },
 ): Record<string, number> {
-  return expenses.reduce(
-    (acc, exp) => ({
-      ...acc,
-      [exp.categoryId]: (acc[exp.categoryId] ?? 0) + exp.amountPaise,
-    }),
-    {} as Record<string, number>,
-  );
+  const result: Record<string, number> = {};
+  for (const exp of expenses) {
+    const catId = options?.normalize
+      ? getNormalizedCategory(exp.categoryId).mainCategoryId
+      : exp.categoryId;
+    result[catId] = (result[catId] ?? 0) + exp.amountPaise;
+  }
+  return result;
 }
 
 /**

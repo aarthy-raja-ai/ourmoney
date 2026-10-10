@@ -39,7 +39,7 @@ import {
 } from '../../src/utils/budgetCalculations';
 import { formatDisplayDate, formatMonthDisplay, getCurrentMonth } from '../../src/utils/dateUtils';
 import { formatAmount, formatAmountCompact } from '../../src/utils/currency';
-import { getCategoryById } from '../../src/constants/categories';
+import { getCategoryById, getNormalizedCategory } from '../../src/constants/categories';
 import type { CategoryId } from '../../src/constants/categories';
 import { generateDashboardInsights } from '../../src/services/spendingInsightsService';
 import {
@@ -113,7 +113,7 @@ export default function HomeScreen() {
 
   // Calculate totals
   const totalPaise = useMemo(() => calculateTotal(expenses), [expenses]);
-  const byCategory = useMemo(() => aggregateByCategory(expenses), [expenses]);
+  const byCategory = useMemo(() => aggregateByCategory(expenses, { normalize: true }), [expenses]);
 
   // Total overall household budget set
   const totalBudgetPaise = useMemo(() => {
@@ -157,10 +157,11 @@ export default function HomeScreen() {
   // Budget cards (warnings/alerts)
   const budgetSummary = useMemo(() => {
     return Object.entries(budgetsMap).map(([catId, budget]: [string, Budget]) => {
-      const spent = byCategory[catId] ?? 0;
+      const normCatId = getNormalizedCategory(catId).mainCategoryId;
+      const spent = byCategory[normCatId] ?? 0;
       const status = getBudgetStatus(spent, budget.amountPaise);
       const pct = getBudgetPercentage(spent, budget.amountPaise);
-      return { catId: catId as CategoryId, budget, spent, status, pct };
+      return { catId: normCatId, budget, spent, status, pct };
     }).filter(b => b.status !== 'normal').slice(0, 3);
   }, [budgetsMap, byCategory]);
 
@@ -397,7 +398,7 @@ export default function HomeScreen() {
 
                     {budgetSummary.map((b) => (
                       <TouchableOpacity
-                        key={b.catId}
+                        key={b.budget?.id ? `budget-${b.budget.id}` : `cat-${b.catId}`}
                         style={styles.attentionRow}
                         onPress={() => router.push('/(modals)/manage-budgets')}
                         accessibilityRole="button"

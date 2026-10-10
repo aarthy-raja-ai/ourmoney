@@ -377,7 +377,7 @@ export function calculateDebtFreeTarget(
     };
   }
 
-  let totalBalance = loans.reduce((sum, l) => sum + (l.outstandingAmountPaise || 0), 0);
+  let totalBalance = loans.reduce((sum, l) => sum + (l.outstandingAmountPaise ?? (l as any).currentBalancePaise ?? 0), 0);
   let totalInterest = 0;
   let months = 0;
 
@@ -385,12 +385,17 @@ export function calculateDebtFreeTarget(
     months++;
     let monthInterest = 0;
     loans.forEach((loan) => {
-      const monthlyRate = (loan.interestRateBps || 0) / 10000 / 12;
-      monthInterest += Math.round((loan.outstandingAmountPaise || 0) * monthlyRate);
+      const bal = loan.outstandingAmountPaise ?? (loan as any).currentBalancePaise ?? 0;
+      const rateBps = loan.interestRateBps ?? (loan as any).annualInterestRateBps ?? 0;
+      const monthlyRate = rateBps / 10000 / 12;
+      monthInterest += Math.round(bal * monthlyRate);
     });
     totalInterest += monthInterest;
 
-    const minPayments = loans.reduce((sum, l) => sum + (l.plannedPaymentPaise || 0), 0);
+    const minPayments = loans.reduce(
+      (sum, l) => sum + (l.plannedPaymentPaise ?? (l as any).minimumPaymentPaise ?? 0),
+      0,
+    );
     const totalPay = minPayments + extraPaymentPaise;
     const principalPaid = totalPay - monthInterest;
 
@@ -402,13 +407,14 @@ export function calculateDebtFreeTarget(
   payoffDate.setMonth(payoffDate.getMonth() + months);
 
   const interestVal = Math.max(0, totalInterest);
+  const initialTotalBalance = loans.reduce((sum, l) => sum + (l.outstandingAmountPaise ?? (l as any).currentBalancePaise ?? 0), 0);
 
   return {
     totalPayoffMonths: months,
     estimatedMonthsToDebtFree: months,
     totalInterestPaise: interestVal,
     estimatedTotalInterestPaise: interestVal,
-    totalPaymentPaise: loans.reduce((sum, l) => sum + (l.outstandingAmountPaise || 0), 0) + interestVal,
+    totalPaymentPaise: initialTotalBalance + interestVal,
     payoffDate,
   };
 }
@@ -468,4 +474,613 @@ export function calculatePayoffScenarios(
     },
   ];
 }
+
+export interface ReverseInterestResult {
+  isValid: boolean;
+  annualRateBps: number;
+  annualRatePercent: number;
+  effectiveAnnualRatePercent: number | null;
+  totalRepaymentPaise: number;
+  totalInterestPaise: number;
+  monthlyEmiPaise: number;
+  disclaimer: string;
+  errorMessage?: string;
+}
+
+/**
+ * Calculate implied annual interest rate (nominal + effective) from Principal, EMI, and Tenure.
+ * Uses bisection numerical root finding for reducing balance loans.
+ */
+export function calculateReverseInterestRate(params: {
+  principalPaise: number;
+  monthlyEmiPaise: number;
+  tenureMonths: number;
+  interestType?: InterestType;
+}): ReverseInterestResult {
+  const { principalPaise, monthlyEmiPaise, tenureMonths, interestType = 'reducing_balance' } = params;
+
+  if (!Number.isFinite(principalPaise) || principalPaise <= 0) {
+    return {
+      isValid: false,
+      annualRateBps: 0,
+      annualRatePercent: 0,
+      effectiveAnnualRatePercent: null,
+      totalRepaymentPaise: 0,
+      totalInterestPaise: 0,
+      monthlyEmiPaise: 0,
+      disclaimer: '',
+      errorMessage: 'Principal amount must be greater than ₹0.',
+    };
+  }
+
+  if (!Number.isFinite(monthlyEmiPaise) || monthlyEmiPaise <= 0) {
+    return {
+      isValid: false,
+      annualRateBps: 0,
+      annualRatePercent: 0,
+      effectiveAnnualRatePercent: null,
+      totalRepaymentPaise: 0,
+      totalInterestPaise: 0,
+      monthlyEmiPaise: 0,
+      disclaimer: '',
+      errorMessage: 'Monthly EMI amount must be greater than ₹0.',
+    };
+  }
+
+  if (!Number.isInteger(tenureMonths) || tenureMonths <= 0) {
+    return {
+      isValid: false,
+      annualRateBps: 0,
+      annualRatePercent: 0,
+      effectiveAnnualRatePercent: null,
+      totalRepaymentPaise: 0,
+      totalInterestPaise: 0,
+      monthlyEmiPaise: 0,
+      disclaimer: '',
+      errorMessage: 'Tenure must be at least 1 month.',
+    };
+  }
+
+  const totalRepaymentPaise = Math.round(monthlyEmiPaise * tenureMonths);
+  const totalInterestPaise = totalRepaymentPaise - principalPaise;
+
+  if (totalRepaymentPaise < principalPaise) {
+    return {
+      isValid: false,
+      annualRateBps: 0,
+      annualRatePercent: 0,
+      effectiveAnnualRatePercent: null,
+      totalRepaymentPaise,
+      totalInterestPaise: 0,
+      monthlyEmiPaise,
+      disclaimer: '',
+      errorMessage: 'Total repayment (EMI × tenure) cannot be less than the principal amount.',
+    };
+  }
+
+  // Zero interest case: EMI * tenure == principal
+  if (totalRepaymentPaise === principalPaise || Math.abs(monthlyEmiPaise - (principalPaise / tenureMonths)) < 0.01) {
+    return {
+      isValid: true,
+      annualRateBps: 0,
+      annualRatePercent: 0,
+      effectiveAnnualRatePercent: 0,
+      totalRepaymentPaise: principalPaise,
+      totalInterestPaise: 0,
+      monthlyEmiPaise,
+      disclaimer: 'Zero interest loan. Total repayment equals the principal amount.',
+    };
+  }
+
+  if (interestType === 'flat' || interestType === 'simple') {
+    // Flat & Simple rate: Total Interest = P * (R/100) * (n/12)
+    const years = tenureMonths / 12;
+    const ratePercent = (totalInterestPaise / principalPaise) / years * 100;
+    const annualRateBps = Math.round(ratePercent * 100);
+
+    const isFlat = interestType === 'flat';
+    const disclaimer = isFlat
+      ? 'Estimated flat interest rate. Note: Flat and reducing-balance rates are not directly comparable because flat interest is charged on the original principal throughout the loan tenure.'
+      : 'Estimated simple interest rate calculated linearly on principal over the total loan tenure.';
+
+    return {
+      isValid: true,
+      annualRateBps,
+      annualRatePercent: Number(ratePercent.toFixed(2)),
+      effectiveAnnualRatePercent: null,
+      totalRepaymentPaise,
+      totalInterestPaise,
+      monthlyEmiPaise,
+      disclaimer,
+    };
+  }
+
+  // Reducing Balance: Numerical Root Finding (Bisection / Binary Search)
+  const P = principalPaise;
+  const targetEMI = monthlyEmiPaise;
+  const n = tenureMonths;
+
+  if (targetEMI < P / n) {
+    return {
+      isValid: false,
+      annualRateBps: 0,
+      annualRatePercent: 0,
+      effectiveAnnualRatePercent: null,
+      totalRepaymentPaise,
+      totalInterestPaise,
+      monthlyEmiPaise,
+      disclaimer: '',
+      errorMessage: 'EMI is too low to repay principal over the specified tenure.',
+    };
+  }
+
+  const emiForMonthlyRate = (r: number): number => {
+    if (r === 0) return P / n;
+    const pow = Math.pow(1 + r, n);
+    return (P * r * pow) / (pow - 1);
+  };
+
+  let low = 0.0;
+  let high = 1.0; // 100% per month initial upper bound
+
+  while (emiForMonthlyRate(high) < targetEMI && high < 5.0) {
+    high *= 2;
+  }
+
+  if (emiForMonthlyRate(high) < targetEMI) {
+    return {
+      isValid: false,
+      annualRateBps: 0,
+      annualRatePercent: 0,
+      effectiveAnnualRatePercent: null,
+      totalRepaymentPaise,
+      totalInterestPaise,
+      monthlyEmiPaise,
+      disclaimer: '',
+      errorMessage: 'Interest rate required for this EMI is extraordinarily high and exceeds bounds.',
+    };
+  }
+
+  for (let i = 0; i < 100; i++) {
+    const mid = (low + high) / 2;
+    const currentEMI = emiForMonthlyRate(mid);
+
+    if (Math.abs(currentEMI - targetEMI) < 1e-7 || (high - low) < 1e-9) {
+      low = mid;
+      break;
+    }
+
+    if (currentEMI < targetEMI) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  const monthlyRate = low;
+  const annualNominalRatePercent = monthlyRate * 12 * 100;
+  const annualRateBps = Math.round(annualNominalRatePercent * 100);
+  const effectiveAnnualRatePercent = (Math.pow(1 + monthlyRate, 12) - 1) * 100;
+
+  return {
+    isValid: true,
+    annualRateBps,
+    annualRatePercent: Number(annualNominalRatePercent.toFixed(2)),
+    effectiveAnnualRatePercent: Number(effectiveAnnualRatePercent.toFixed(2)),
+    totalRepaymentPaise,
+    totalInterestPaise,
+    monthlyEmiPaise,
+    disclaimer:
+      'Estimated nominal reducing-balance interest rate based on entered principal, EMI, and tenure. Official rates may vary due to lender processing fees, GST, insurance, or interest rounding.',
+  };
+}
+
+export interface InterestModelComparisonItem {
+  interestType: InterestType;
+  label: string;
+  annualRatePercent: number;
+  annualRateBps: number;
+  effectiveAnnualRatePercent: number | null;
+  totalInterestPaise: number;
+  totalRepaymentPaise: number;
+  monthlyEmiPaise: number;
+  calculationMethod: string;
+  isValid: boolean;
+  errorMessage?: string;
+  disclaimer: string;
+}
+
+/**
+ * Compare all three interest models (Reducing Balance, Flat, Simple Interest) side-by-side.
+ */
+export function compareAllInterestModels(params: {
+  principalPaise: number;
+  monthlyEmiPaise: number;
+  tenureMonths: number;
+}): InterestModelComparisonItem[] {
+  const { principalPaise, monthlyEmiPaise, tenureMonths } = params;
+
+  const models: Array<{ id: InterestType; label: string; method: string }> = [
+    {
+      id: 'reducing_balance',
+      label: 'Reducing Balance (EMI)',
+      method: 'Interest recalculated monthly on declining principal balance.',
+    },
+    {
+      id: 'flat',
+      label: 'Flat Interest',
+      method: 'Flat rate charged on original principal throughout tenure.',
+    },
+    {
+      id: 'simple',
+      label: 'Simple Interest',
+      method: 'Linear simple interest calculated on principal over total tenure.',
+    },
+  ];
+
+  return models.map((m) => {
+    const res = calculateReverseInterestRate({
+      principalPaise,
+      monthlyEmiPaise,
+      tenureMonths,
+      interestType: m.id,
+    });
+
+    return {
+      interestType: m.id,
+      label: m.label,
+      annualRatePercent: res.annualRatePercent,
+      annualRateBps: res.annualRateBps,
+      effectiveAnnualRatePercent: res.effectiveAnnualRatePercent,
+      totalInterestPaise: res.totalInterestPaise,
+      totalRepaymentPaise: res.totalRepaymentPaise,
+      monthlyEmiPaise,
+      calculationMethod: m.method,
+      isValid: res.isValid,
+      errorMessage: res.errorMessage,
+      disclaimer: res.disclaimer,
+    };
+  });
+}
+
+export interface ResolveLoanInterestRateParams {
+  interestType: InterestType;
+  interestRateBps?: number;
+  principalPaise?: number;
+  monthlyEmiPaise?: number;
+  tenureMonths?: number;
+}
+
+export interface ResolvedLoanInterestRate {
+  rateBps: number;
+  ratePercent: number;
+  displayText: string;
+  isDerived: boolean;
+  isValid: boolean;
+  modelLabel: string;
+}
+
+/**
+ * Resolves the display and calculation interest rate for a loan across all models.
+ * Ensures the Loan Details summary and Interest Model Comparison card display the exact same rate.
+ * Never silently displays 0.00% p.a. when an implied rate is derivable or when the rate is unknown.
+ */
+export function resolveLoanInterestRate(
+  params: ResolveLoanInterestRateParams,
+): ResolvedLoanInterestRate {
+  const {
+    interestType,
+    interestRateBps = 0,
+    principalPaise = 0,
+    monthlyEmiPaise = 0,
+    tenureMonths = 0,
+  } = params;
+
+  const modelLabel =
+    interestType === 'flat'
+      ? 'Flat'
+      : interestType === 'simple'
+      ? 'Simple'
+      : 'Reducing';
+
+  // 1. Attempt to derive implied rate for the given interest model from principal, EMI, and tenure
+  if (principalPaise > 0 && monthlyEmiPaise > 0 && tenureMonths > 0) {
+    const reverseRes = calculateReverseInterestRate({
+      principalPaise,
+      monthlyEmiPaise,
+      tenureMonths,
+      interestType,
+    });
+
+    if (reverseRes.isValid) {
+      return {
+        rateBps: reverseRes.annualRateBps,
+        ratePercent: reverseRes.annualRatePercent,
+        displayText: `${reverseRes.annualRatePercent.toFixed(2)}% p.a. (${modelLabel})`,
+        isDerived: true,
+        isValid: true,
+        modelLabel,
+      };
+    }
+  }
+
+  // 2. If repayment inputs (P, EMI, n) cannot derive a rate, check if explicit positive rate was provided
+  if (interestRateBps > 0) {
+    const ratePercent = Number((interestRateBps / 100).toFixed(2));
+    return {
+      rateBps: interestRateBps,
+      ratePercent,
+      displayText: `${ratePercent.toFixed(2)}% p.a. (${modelLabel})`,
+      isDerived: false,
+      isValid: true,
+      modelLabel,
+    };
+  }
+
+  // 3. Genuine unknown/invalid state — do not fall back to 0.00%
+  return {
+    rateBps: 0,
+    ratePercent: 0,
+    displayText: `Unavailable (${modelLabel})`,
+    isDerived: false,
+    isValid: false,
+    modelLabel,
+  };
+}
+
+export interface InstallmentScheduleItem {
+  installmentNumber: number;
+  paymentPaise: number;
+  principalPaise: number;
+  interestPaise: number;
+  remainingRepaymentBalancePaise: number;
+  remainingPrincipalPaise: number;
+}
+
+/**
+ * Generate full amortization schedule with integer paise precision and final installment rounding correction.
+ */
+export function generateAmortizationSchedule(params: {
+  principalPaise: number;
+  annualRateBps: number;
+  tenureMonths: number;
+  interestType?: InterestType;
+  plannedEmiPaise?: number;
+}): {
+  schedule: InstallmentScheduleItem[];
+  totalScheduledRepaymentPaise: number;
+  totalScheduledInterestPaise: number;
+  monthlyInstallmentPaise: number;
+} {
+  const { principalPaise, annualRateBps, tenureMonths, interestType = 'reducing_balance', plannedEmiPaise } = params;
+
+  if (principalPaise <= 0 || tenureMonths <= 0) {
+    return {
+      schedule: [],
+      totalScheduledRepaymentPaise: 0,
+      totalScheduledInterestPaise: 0,
+      monthlyInstallmentPaise: 0,
+    };
+  }
+
+  if (interestType === 'flat' || interestType === 'simple') {
+    const years = tenureMonths / 12;
+    const rate = annualRateBps / 10000;
+    const totalScheduledInterestPaise = Math.round(principalPaise * rate * years);
+    const totalScheduledRepaymentPaise = plannedEmiPaise ? plannedEmiPaise * tenureMonths : principalPaise + totalScheduledInterestPaise;
+
+    const baseEmi = plannedEmiPaise ?? Math.floor(totalScheduledRepaymentPaise / tenureMonths);
+    const basePrincipal = Math.floor(principalPaise / tenureMonths);
+
+    const schedule: InstallmentScheduleItem[] = [];
+    let remRepayment = totalScheduledRepaymentPaise;
+    let remPrincipal = principalPaise;
+
+    for (let i = 1; i <= tenureMonths; i++) {
+      const isLast = i === tenureMonths;
+      const emi = isLast ? remRepayment : baseEmi;
+      const prin = isLast ? remPrincipal : basePrincipal;
+      const int = emi - prin;
+
+      remRepayment -= emi;
+      remPrincipal -= prin;
+
+      schedule.push({
+        installmentNumber: i,
+        paymentPaise: emi,
+        principalPaise: prin,
+        interestPaise: Math.max(0, int),
+        remainingRepaymentBalancePaise: Math.max(0, remRepayment),
+        remainingPrincipalPaise: Math.max(0, remPrincipal),
+      });
+    }
+
+    return {
+      schedule,
+      totalScheduledRepaymentPaise,
+      totalScheduledInterestPaise,
+      monthlyInstallmentPaise: baseEmi,
+    };
+  }
+
+  // Reducing Balance
+  const monthlyEmi = plannedEmiPaise ?? calculateEMI(principalPaise, annualRateBps, tenureMonths);
+  const monthlyRate = (annualRateBps / 10000) / 12;
+  const schedule: InstallmentScheduleItem[] = [];
+
+  let remPrincipal = principalPaise;
+  let totalInterest = 0;
+  let totalRepayment = 0;
+
+  for (let i = 1; i <= tenureMonths; i++) {
+    const isLast = i === tenureMonths;
+    const interestPaise = annualRateBps === 0 ? 0 : Math.round(remPrincipal * monthlyRate);
+    
+    let principalPaiseItem = monthlyEmi - interestPaise;
+    let emiItem = monthlyEmi;
+
+    if (isLast || principalPaiseItem >= remPrincipal) {
+      principalPaiseItem = remPrincipal;
+      emiItem = principalPaiseItem + interestPaise;
+    }
+
+    remPrincipal -= principalPaiseItem;
+    totalInterest += interestPaise;
+    totalRepayment += emiItem;
+
+    schedule.push({
+      installmentNumber: i,
+      paymentPaise: emiItem,
+      principalPaise: principalPaiseItem,
+      interestPaise,
+      remainingRepaymentBalancePaise: 0,
+      remainingPrincipalPaise: Math.max(0, remPrincipal),
+    });
+  }
+
+  let runningRepayment = totalRepayment;
+  for (const item of schedule) {
+    runningRepayment -= item.paymentPaise;
+    item.remainingRepaymentBalancePaise = Math.max(0, runningRepayment);
+  }
+
+  return {
+    schedule,
+    totalScheduledRepaymentPaise: totalRepayment,
+    totalScheduledInterestPaise: totalInterest,
+    monthlyInstallmentPaise: monthlyEmi,
+  };
+}
+
+export interface ExistingLoanStateParams {
+  originalPrincipalPaise: number;
+  annualRateBps: number;
+  totalTenureMonths: number;
+  completedInstallments: number;
+  monthlyEmiPaise: number;
+  interestType?: InterestType;
+  lenderOutstandingPaise?: number;
+  lenderRemainingRepaymentPaise?: number;
+}
+
+export interface ExistingLoanStateResult {
+  remainingInstallments: number;
+  remainingInstallmentCount: number;
+  effectiveAnnualRateBps: number;
+  isEstimated: boolean;
+  totalScheduledInterestPaise: number;
+  totalScheduledRepaymentPaise: number;
+  historicalPaymentsPaidPaise: number;
+  historicalPrincipalPaidPaise: number;
+  historicalInterestPaidPaise: number;
+  calculatedOutstandingPrincipalPaise: number;
+  calculatedRemainingRepaymentPaise: number;
+  finalOutstandingPrincipalPaise: number;
+  finalRemainingRepaymentPaise: number;
+  remainingInterestEstimatePaise: number;
+  schedule: InstallmentScheduleItem[];
+}
+
+/**
+ * Calculate state, schedule, and balances for an existing / already started loan.
+ * Accurately tracks completed vs remaining installments and month-by-month principal reduction.
+ */
+export function calculateExistingLoanState(
+  params: ExistingLoanStateParams,
+): ExistingLoanStateResult {
+  const {
+    originalPrincipalPaise,
+    annualRateBps,
+    totalTenureMonths,
+    completedInstallments,
+    monthlyEmiPaise,
+    interestType = 'reducing_balance',
+    lenderOutstandingPaise,
+    lenderRemainingRepaymentPaise,
+  } = params;
+
+  const totalTenure = Math.max(1, Math.round(totalTenureMonths));
+  const nCompleted = Math.max(0, Math.min(totalTenure, Math.round(completedInstallments)));
+  const remainingInstallments = totalTenure - nCompleted;
+
+  let effectiveRateBps = Math.max(0, Math.round(annualRateBps || 0));
+  let isEstimated = false;
+
+  const resolved = resolveLoanInterestRate({
+    interestType,
+    interestRateBps: effectiveRateBps,
+    principalPaise: originalPrincipalPaise,
+    monthlyEmiPaise,
+    tenureMonths: totalTenure,
+  });
+
+  if (resolved.isValid) {
+    effectiveRateBps = resolved.rateBps;
+    isEstimated = resolved.isDerived;
+  }
+
+  const { schedule, totalScheduledInterestPaise, totalScheduledRepaymentPaise } =
+    generateAmortizationSchedule({
+      principalPaise: originalPrincipalPaise,
+      annualRateBps: effectiveRateBps,
+      tenureMonths: totalTenure,
+      interestType,
+      plannedEmiPaise: monthlyEmiPaise > 0 ? monthlyEmiPaise : undefined,
+    });
+
+  let historicalPaymentsPaidPaise = 0;
+  let historicalPrincipalPaidPaise = 0;
+  let historicalInterestPaidPaise = 0;
+
+  for (let i = 0; i < nCompleted; i++) {
+    if (schedule[i]) {
+      historicalPaymentsPaidPaise += schedule[i].paymentPaise;
+      historicalPrincipalPaidPaise += schedule[i].principalPaise;
+      historicalInterestPaidPaise += schedule[i].interestPaise;
+    }
+  }
+
+  let calculatedOutstandingPrincipalPaise = originalPrincipalPaise;
+  let calculatedRemainingRepaymentPaise = totalScheduledRepaymentPaise;
+
+  if (nCompleted > 0 && nCompleted <= schedule.length) {
+    const lastCompleted = schedule[nCompleted - 1];
+    calculatedOutstandingPrincipalPaise = lastCompleted.remainingPrincipalPaise;
+    calculatedRemainingRepaymentPaise = lastCompleted.remainingRepaymentBalancePaise;
+  }
+
+  const finalOutstandingPrincipalPaise =
+    lenderOutstandingPaise !== undefined && lenderOutstandingPaise >= 0
+      ? lenderOutstandingPaise
+      : calculatedOutstandingPrincipalPaise;
+
+  const finalRemainingRepaymentPaise =
+    lenderRemainingRepaymentPaise !== undefined && lenderRemainingRepaymentPaise >= 0
+      ? lenderRemainingRepaymentPaise
+      : calculatedRemainingRepaymentPaise;
+
+  const remainingInterestEstimatePaise = Math.max(
+    0,
+    finalRemainingRepaymentPaise - finalOutstandingPrincipalPaise,
+  );
+
+  return {
+    remainingInstallments,
+    remainingInstallmentCount: remainingInstallments,
+    effectiveAnnualRateBps: effectiveRateBps,
+    isEstimated,
+    totalScheduledInterestPaise,
+    totalScheduledRepaymentPaise,
+    historicalPaymentsPaidPaise,
+    historicalPrincipalPaidPaise,
+    historicalInterestPaidPaise,
+    calculatedOutstandingPrincipalPaise,
+    calculatedRemainingRepaymentPaise,
+    finalOutstandingPrincipalPaise,
+    finalRemainingRepaymentPaise,
+    remainingInterestEstimatePaise,
+    schedule,
+  };
+}
+
 

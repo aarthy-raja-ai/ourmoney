@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useLoans } from '../../src/hooks/useLoans';
 import { LoanScenarioCard } from '../../src/components/LoanScenarioCard';
-import { calculatePayoffScenarios } from '../../src/utils/loanCalculations';
+import { calculatePayoffScenarios, resolveLoanInterestRate } from '../../src/utils/loanCalculations';
 
 export default function RepaymentPlanModal() {
   const { theme } = useTheme();
@@ -20,9 +20,19 @@ export default function RepaymentPlanModal() {
 
   if (!loan) return null;
 
+  const resolvedRate = resolveLoanInterestRate({
+    interestType: loan.interestType,
+    interestRateBps: loan.interestRateBps,
+    principalPaise: loan.originalAmountPaise,
+    monthlyEmiPaise: loan.plannedPaymentPaise,
+    tenureMonths: loan.tenureMonths,
+  });
+
+  const rateToUse = resolvedRate.isValid ? resolvedRate.rateBps : loan.interestRateBps;
+
   const scenarios = calculatePayoffScenarios(
     loan.outstandingAmountPaise,
-    loan.interestRateBps,
+    rateToUse,
     loan.plannedPaymentPaise,
     loan.repaymentMethod,
   );

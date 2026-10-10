@@ -240,6 +240,12 @@ service cloud.firestore {
         allow write: if isHouseholdMember(householdId);
       }
 
+      // ── Learned Vendor Mappings ───────────────────────────────────────────
+
+      match /vendor_mappings/{mappingId} {
+        allow read, write: if isHouseholdMember(householdId);
+      }
+
       // ── Pending Purchases ──────────────────────────────────────────────────
 
       match /pendingPurchases/{pendingPurchaseId} {

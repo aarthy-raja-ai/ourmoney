@@ -42,6 +42,7 @@ import { ConfirmDialog } from '../../src/components/ConfirmDialog';
 import { DebtFreeTargetCalculator } from '../../src/components/DebtFreeTargetCalculator';
 import { formatCurrency } from '../../src/utils/currency';
 import { getLoanTypeById } from '../../src/constants/loanTypes';
+import { resolveLoanInterestRate } from '../../src/utils/loanCalculations';
 import type { Loan } from '../../src/models/loan';
 
 export default function LoansScreen() {
@@ -282,6 +283,14 @@ function LoanCard({
   const current = loan.outstandingAmountPaise || 0;
   const paidPercent = Math.max(0, Math.min(100, Math.round(((initial - current) / initial) * 100)));
 
+  const resolvedRate = resolveLoanInterestRate({
+    interestType: loan.interestType,
+    interestRateBps: loan.interestRateBps,
+    principalPaise: loan.originalAmountPaise,
+    monthlyEmiPaise: loan.plannedPaymentPaise,
+    tenureMonths: loan.tenureMonths,
+  });
+
   return (
     <Card style={styles.loanCard} onPress={onTouch}>
       <View style={styles.loanHeader}>
@@ -292,7 +301,7 @@ function LoanCard({
           <View style={styles.loanTitleGroup}>
             <Text style={[styles.loanName, { color: theme.colors.textPrimary }]}>{loan.lenderName}</Text>
             <Text style={[styles.loanLender, { color: theme.colors.textSecondary }]}>
-              {loanTypeInfo.label} • {((loan.interestRateBps || 0) / 100).toFixed(2)}% p.a.
+              {loanTypeInfo.label} • {resolvedRate.isValid ? `${resolvedRate.ratePercent.toFixed(2)}% p.a.` : 'Rate Unavailable'}
             </Text>
           </View>
         </View>
@@ -343,9 +352,16 @@ function LoanCard({
               ]}
             />
           </View>
-          <Text style={[styles.progressText, { color: theme.colors.textTertiary }]}>
-            {paidPercent}% paid off
-          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            <Text style={[styles.progressText, { color: theme.colors.textTertiary }]}>
+              {paidPercent}% principal paid off
+            </Text>
+            {loan.isExistingLoan && loan.completedInstallments !== undefined && loan.tenureMonths !== undefined && (
+              <Text style={[styles.progressText, { color: theme.colors.primary, fontWeight: '600' }]}>
+                {loan.completedInstallments}/{loan.tenureMonths} EMIs completed
+              </Text>
+            )}
+          </View>
         </View>
       )}
     </Card>

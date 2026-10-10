@@ -6,7 +6,7 @@
 // =====================================================
 
 import type { CategoryId } from '../constants/categories';
-import { getCategoryById } from '../constants/categories';
+import { getCategoryById, getNormalizedCategory } from '../constants/categories';
 import { getBudgetStatus, getBudgetPercentage } from '../utils/budgetCalculations';
 import { formatAmount, formatAmountCompact } from '../utils/currency';
 
@@ -28,6 +28,7 @@ export interface ReflectionInsight {
 }
 
 export interface SpendingReflectionResult {
+  shouldReflect?: boolean;
   highestSeverity: 'normal' | 'notice' | 'warning' | 'exceeded';
   insights: ReflectionInsight[];
   nudge: string;
@@ -299,13 +300,24 @@ export function generateDashboardInsights(params: {
 /**
  * Evaluate expense reflection for Add/Edit Expense modal.
  */
-export function evaluateExpenseReflection(params: {
-  amountPaise: number;
-  categoryId: CategoryId;
-  currentCategorySpentPaise: number;
-  budgetPaise: number | null;
-}): SpendingReflectionResult | null {
-  const { amountPaise, categoryId, currentCategorySpentPaise, budgetPaise } = params;
+export function evaluateExpenseReflection(params: any): SpendingReflectionResult | null {
+  const amountPaise = params.amountPaise ?? params.newExpensePaise ?? 0;
+  const categoryId: CategoryId = params.categoryId;
+
+  let currentCategorySpentPaise = params.currentCategorySpentPaise ?? 0;
+  let budgetPaise: number | null = params.budgetPaise ?? null;
+
+  if (Array.isArray(params.monthExpenses)) {
+    currentCategorySpentPaise = params.monthExpenses
+      .filter((e: any) => e.categoryId === categoryId)
+      .reduce((sum: number, e: any) => sum + (e.amountPaise || 0), 0);
+  }
+
+  if (Array.isArray(params.budgets)) {
+    const found = params.budgets.find((b: any) => b.categoryId === categoryId);
+    if (found) budgetPaise = found.amountPaise;
+  }
+
   const category = getCategoryById(categoryId);
 
   if (budgetPaise && budgetPaise > 0) {
@@ -315,22 +327,24 @@ export function evaluateExpenseReflection(params: {
 
     if (status === 'exceeded') {
       return {
+        shouldReflect: true,
         highestSeverity: 'exceeded',
         insights: [
           {
             severity: 'exceeded',
-            message: `This expense will exceed your monthly budget for ${category.label} (${pct.toFixed(0)}% used).`,
+            message: `This expense will exceed your monthly budget for ${category?.label || categoryId} (${pct.toFixed(0)}% used).`,
           },
         ],
         nudge: 'Consider if this purchase can be postponed or allocated across other budget categories.',
       };
     } else if (status === 'almost' || status === 'heads-up') {
       return {
+        shouldReflect: true,
         highestSeverity: 'warning',
         insights: [
           {
             severity: 'warning',
-            message: `This expense brings ${category.label} spending to ${pct.toFixed(0)}% of your budget.`,
+            message: `This expense brings ${category?.label || categoryId} spending to ${pct.toFixed(0)}% of your budget.`,
           },
         ],
         nudge: 'You are close to your target limit for this category.',
@@ -338,8 +352,110 @@ export function evaluateExpenseReflection(params: {
     }
   }
 
-  return null;
+  return {
+    shouldReflect: false,
+    highestSeverity: 'normal',
+    insights: [],
+    nudge: '',
+  };
 }
 
-export const generateSpendingInsights = generateDashboardInsights;
+export function generateSpendingInsights(
+  arg1: any,
+  arg2?: any,
+  _arg3?: any,
+): any[] {
+  if (Array.isArray(arg1)) {
+    const expenses = arg1;
+    const budgets = Array.isArray(arg2) ? arg2 : [];
+    const insights: any[] = [];
+
+    const categoryTotals: Record<string, number> = {};
+    for (const e of expenses) {
+      if (e.categoryId) {
+        categoryTotals[e.categoryId] = (categoryTotals[e.categoryId] || 0) + (e.amountPaise || 0);
+      }
+    }
+
+    const budgetMap: Record<string, number> = {};
+    for (const b of budgets) {
+      if (b.categoryId) {
+        budgetMap[b.categoryId] = b.amountPaise;
+      }
+    }
+
+    for (const [catId, spent] of Object.entries(categoryTotals)) {
+      const budget = budgetMap[catId];
+      if (budget && spent > budget) {
+        insights.push({
+          type: 'budget_exceeded',
+          categoryId: catId,
+          message: `${catId} spending exceeds budget.`,
+        });
+      }
+    }
+    return insights;
+  }
+
+  if (arg1 && typeof arg1 === 'object') {
+    return generateDashboardInsights(arg1);
+  }
+
+  return [];
+}
+
+/**
+ * Aggregates expenses into normalized main categories and subcategories without double-counting.
+ * Every expense is summed exactly ONCE into totalPaise, ONCE into its main category total,
+ * and ONCE into its subcategory total.
+ */
+export function getNormalizedCategoryTotals(expenses: Array<{ categoryId: string; subcategoryId?: string; amountPaise: number }>): {
+  mainCategoryTotals: Record<string, number>;
+  subcategoryTotals: Record<string, number>;
+  totalPaise: number;
+} {
+  const mainCategoryTotals: Record<string, number> = {};
+  const subcategoryTotals: Record<string, number> = {};
+  let totalPaise = 0;
+
+  for (const e of expenses) {
+    const amount = e.amountPaise || 0;
+    const norm = getNormalizedCategory(e.categoryId, e.subcategoryId);
+
+    mainCategoryTotals[norm.mainCategoryId] = (mainCategoryTotals[norm.mainCategoryId] || 0) + amount;
+
+    if (norm.subcategoryId) {
+      const subKey = `${norm.mainCategoryId}:${norm.subcategoryId}`;
+      subcategoryTotals[subKey] = (subcategoryTotals[subKey] || 0) + amount;
+    }
+
+    totalPaise += amount;
+  }
+
+  return {
+    mainCategoryTotals,
+    subcategoryTotals,
+    totalPaise,
+  };
+}
+
+/**
+ * Calculate month-over-month or period-over-period percentage change safely.
+ * Returns null if previous period spending is null or 0 to prevent misleading infinity changes.
+ */
+export function calculateSafePercentageChange(
+  currentPaise: number,
+  previousPaise: number | null | undefined,
+): { pct: number; label: string; isIncrease: boolean } | null {
+  if (previousPaise === null || previousPaise === undefined || previousPaise <= 0) {
+    return null;
+  }
+
+  const diff = currentPaise - previousPaise;
+  const pct = (diff / previousPaise) * 100;
+  const isIncrease = diff > 0;
+  const label = `${isIncrease ? '+' : ''}${pct.toFixed(1)}%`;
+
+  return { pct, label, isIncrease };
+}
 

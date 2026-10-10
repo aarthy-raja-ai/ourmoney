@@ -11,6 +11,8 @@ export interface Expense {
   householdId: string;
   amountPaise: number; // integer, paise
   categoryId: CategoryId;
+  subcategoryId?: string;
+  autoCategorized?: boolean;
   description: string;
   paidByUserId: string;
   paidByUserName?: string;
@@ -24,6 +26,8 @@ export interface Expense {
   splitRatio?: string;
   userPaidPaise?: number;
   partnerPaidPaise?: number;
+  loanId?: string;
+  loanPaymentId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -35,13 +39,15 @@ export type CreateExpenseInput = Omit<Expense, 'id' | 'createdAt' | 'updatedAt' 
   createdByUserId?: string;
 };
 export type UpdateExpenseInput = Partial<
-  Pick<Expense, 'amountPaise' | 'categoryId' | 'description' | 'paidByUserId' | 'paymentMethod' | 'paymentStatus' | 'settledAt' | 'settledBy' | 'date' | 'notes'>
+  Pick<Expense, 'amountPaise' | 'categoryId' | 'subcategoryId' | 'autoCategorized' | 'description' | 'paidByUserId' | 'paymentMethod' | 'paymentStatus' | 'settledAt' | 'settledBy' | 'date' | 'notes'>
 >;
 
 // For UI forms — uses rupees (number) before conversion to paise
 export interface ExpenseFormValues {
   amountRupees: string; // string for input control
   categoryId: CategoryId;
+  subcategoryId?: string;
+  autoCategorized?: boolean;
   description: string;
   paidByUserId: string;
   paymentMethod: PaymentMethodId;

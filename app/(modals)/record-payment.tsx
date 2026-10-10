@@ -106,7 +106,7 @@ export default function RecordPaymentModal() {
         <View style={styles.typeRow}>
           {[
             { id: 'emi', label: 'Regular EMI' },
-            { id: 'prepayment', label: 'Principal Prepayment' },
+            { id: 'principal', label: 'Principal Prepayment' },
             { id: 'interest', label: 'Interest Only' },
           ].map((t) => {
             const isSelected = paymentType === t.id;

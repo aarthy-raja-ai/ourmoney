@@ -146,3 +146,34 @@ export function formatMonthShort(month: string): string {
   const d = new Date(`${month}-01`);
   return d.toLocaleString('en-IN', { month: 'short' });
 }
+
+/**
+ * Format date and time in local timezone for display.
+ * E.g., "15 Mar 2026, 2:30 PM"
+ */
+export function formatDateTime(date?: Date | Timestamp | null): string {
+  if (!date) return '';
+  const d = date instanceof Timestamp ? date.toDate() : date;
+  return d.toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+/**
+ * Safely extract creation timestamp, falling back to effective transaction date if createdAt is missing.
+ */
+export function getEffectiveCreationTimestamp(record: { createdAt?: Timestamp | null; date?: Timestamp | Date | null }): Date {
+  if (record.createdAt) {
+    return record.createdAt instanceof Timestamp ? record.createdAt.toDate() : record.createdAt;
+  }
+  if (record.date) {
+    return record.date instanceof Timestamp ? record.date.toDate() : record.date;
+  }
+  return new Date();
+}
+

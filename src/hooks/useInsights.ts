@@ -9,7 +9,7 @@ import { useBudgets } from './useBudgets';
 import { useAuth } from '../context/AuthContext';
 import { useHousehold } from '../context/HouseholdContext';
 import { getExpensesForMonth } from '../services/expenseService';
-import { getCategoryById } from '../constants/categories';
+import { getCategoryById, getNormalizedCategory } from '../constants/categories';
 import {
   getCurrentMonth,
   getPreviousMonth,
@@ -254,7 +254,7 @@ export function useInsights(period: InsightPeriod = 'month') {
     // Category Breakdown
     const categoryTotalsMap: Record<string, { amountPaise: number; count: number }> = {};
     periodExpenses.forEach((e) => {
-      const catId = e.categoryId || 'other';
+      const catId = getNormalizedCategory(e.categoryId, e.subcategoryId).mainCategoryId;
       if (!categoryTotalsMap[catId]) {
         categoryTotalsMap[catId] = { amountPaise: 0, count: 0 };
       }
@@ -279,13 +279,14 @@ export function useInsights(period: InsightPeriod = 'month') {
     // Category Totals for full month (used for Budget utilization connection)
     const fullMonthCategoryTotals: Record<string, number> = {};
     currentMonthExpenses.forEach((e) => {
-      const catId = e.categoryId || 'other';
+      const catId = getNormalizedCategory(e.categoryId, e.subcategoryId).mainCategoryId;
       fullMonthCategoryTotals[catId] = (fullMonthCategoryTotals[catId] || 0) + e.amountPaise;
     });
 
     // Budget Utilization (Current Month)
     const budgetUtilization: BudgetUtilizationItem[] = budgets.map((b) => {
-      const spentPaise = fullMonthCategoryTotals[b.categoryId] ?? 0;
+      const normCatId = getNormalizedCategory(b.categoryId).mainCategoryId;
+      const spentPaise = fullMonthCategoryTotals[normCatId] ?? 0;
       const pct = b.amountPaise > 0 ? (spentPaise / b.amountPaise) * 100 : 0;
       let status: BudgetUtilizationItem['status'] = 'normal';
 

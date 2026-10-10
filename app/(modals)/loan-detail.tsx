@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useHousehold } from '../../src/context/HouseholdContext';
-import { getLoanPayments, deleteLoan } from '../../src/services/loanService';
+import { getLoanPayments, deleteLoan, updateLoan } from '../../src/services/loanService';
 import { useLoans } from '../../src/hooks/useLoans';
 import { Card } from '../../src/components/Card';
 import { Button } from '../../src/components/Button';
@@ -16,11 +16,13 @@ import { Badge } from '../../src/components/Badge';
 import { ConfirmDialog } from '../../src/components/ConfirmDialog';
 import { LoadingSpinner } from '../../src/components/LoadingSpinner';
 import { LoanScenarioCard } from '../../src/components/LoanScenarioCard';
+import { InterestComparisonCard } from '../../src/components/InterestComparisonCard';
 import { formatCurrency } from '../../src/utils/currency';
-import { formatDate } from '../../src/utils/dateUtils';
-import { calculateLoanPayoffDetails } from '../../src/utils/loanCalculations';
+import { formatDate, formatDateTime } from '../../src/utils/dateUtils';
+import { calculateLoan, calculateExistingLoanState, resolveLoanInterestRate } from '../../src/utils/loanCalculations';
 import { getLoanTypeById } from '../../src/constants/loanTypes';
 import type { LoanPayment } from '../../src/models/loanPayment';
+import type { InterestType } from '../../src/models/loan';
 
 export default function LoanDetailModal() {
   const { theme } = useTheme();
@@ -51,6 +53,36 @@ export default function LoanDetailModal() {
       .catch(() => setIsLoadingPayments(false));
   }, [householdId, id]);
 
+  const [activeInterestType, setActiveInterestType] = useState<InterestType>(
+    loan?.interestType || 'reducing_balance',
+  );
+
+  useEffect(() => {
+    if (loan?.interestType) {
+      setActiveInterestType(loan.interestType);
+    }
+  }, [loan?.interestType]);
+
+  // Single source of truth for display & calculation rate
+  const resolvedRate = resolveLoanInterestRate({
+    interestType: activeInterestType,
+    interestRateBps: loan?.interestRateBps,
+    principalPaise: loan?.originalAmountPaise,
+    monthlyEmiPaise: loan?.plannedPaymentPaise,
+    tenureMonths: loan?.tenureMonths ?? 36,
+  });
+
+  const effectiveRateBps = resolvedRate.isValid ? resolvedRate.rateBps : 0;
+
+  // Auto-heal legacy loans stored with 0 bps
+  useEffect(() => {
+    if (householdId && loan?.id && loan.interestRateBps === 0 && resolvedRate.isValid && resolvedRate.rateBps > 0) {
+      updateLoan(householdId, loan.id, {
+        interestRateBps: resolvedRate.rateBps,
+      }).catch((err) => console.log('[LOAN_AUTO_HEAL_RATE_ERROR]', err));
+    }
+  }, [householdId, loan?.id, loan?.interestRateBps, resolvedRate.isValid, resolvedRate.rateBps]);
+
   if (!loan) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -61,13 +93,58 @@ export default function LoanDetailModal() {
 
   const loanTypeInfo = getLoanTypeById(loan.loanType);
 
-  // Payoff calculations
-  const payoffDetails = calculateLoanPayoffDetails(
-    loan.outstandingAmountPaise,
-    loan.interestRateBps,
-    loan.plannedPaymentPaise,
-    loan.repaymentMethod,
-  );
+  // Existing loan amortization state and inferred rate
+  const existingLoanCalc = (loan.originalAmountPaise > 0 && (loan.tenureMonths ?? 0) > 0)
+    ? calculateExistingLoanState({
+        originalPrincipalPaise: loan.originalAmountPaise,
+        annualRateBps: effectiveRateBps,
+        totalTenureMonths: loan.tenureMonths ?? 36,
+        completedInstallments: loan.completedInstallments ?? 0,
+        monthlyEmiPaise: loan.plannedPaymentPaise,
+        interestType: activeInterestType,
+        lenderOutstandingPaise: loan.isLenderOutstandingConfirmed ? loan.outstandingAmountPaise : undefined,
+        lenderRemainingRepaymentPaise: loan.isLenderRemainingRepaymentConfirmed ? loan.remainingRepaymentBalancePaise : undefined,
+      })
+    : null;
+
+  // Payoff calculations using actual / inferred interest rate and loan parameters
+  const payoffDetails = calculateLoan({
+    outstandingAmountPaise: loan.outstandingAmountPaise,
+    interestRateBps: effectiveRateBps,
+    interestType: activeInterestType,
+    repaymentMethod: loan.repaymentMethod,
+    repaymentFrequency: loan.repaymentFrequency,
+    plannedPaymentPaise: loan.plannedPaymentPaise,
+  });
+
+  const handleSelectInterestModel = async (type: InterestType, modelRateBps: number) => {
+    setActiveInterestType(type);
+    if (!householdId || !loan?.id) return;
+
+    try {
+      const updatedState = calculateExistingLoanState({
+        originalPrincipalPaise: loan.originalAmountPaise,
+        annualRateBps: modelRateBps,
+        totalTenureMonths: loan.tenureMonths ?? 36,
+        completedInstallments: loan.completedInstallments ?? 0,
+        monthlyEmiPaise: loan.plannedPaymentPaise,
+        interestType: type,
+        lenderOutstandingPaise: loan.isLenderOutstandingConfirmed ? loan.outstandingAmountPaise : undefined,
+        lenderRemainingRepaymentPaise: loan.isLenderRemainingRepaymentConfirmed ? loan.remainingRepaymentBalancePaise : undefined,
+      });
+
+      await updateLoan(householdId, loan.id, {
+        interestType: type,
+        interestRateBps: modelRateBps,
+        outstandingAmountPaise: updatedState.finalOutstandingPrincipalPaise,
+        remainingRepaymentBalancePaise: updatedState.finalRemainingRepaymentPaise,
+        totalScheduledInterestPaise: updatedState.totalScheduledInterestPaise,
+        totalScheduledRepaymentPaise: updatedState.totalScheduledRepaymentPaise,
+      });
+    } catch (err: any) {
+      console.log('[LOAN_MODEL_SELECTION_ERROR]', err?.message || err);
+    }
+  };
 
   const handleDeleteLoan = async () => {
     if (!householdId || !id) return;
@@ -119,17 +196,26 @@ export default function LoanDetailModal() {
           </View>
 
           <Text style={[styles.balanceLabel, { color: theme.colors.textTertiary }]}>
-            Outstanding Balance
+            Outstanding Principal Balance
           </Text>
           <Text style={[styles.balanceAmount, { color: theme.colors.textPrimary }]}>
             {formatCurrency(loan.outstandingAmountPaise)}
           </Text>
 
+          {loan.remainingRepaymentBalancePaise !== undefined && (
+            <View style={{ marginBottom: 12 }}>
+              <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Remaining Scheduled Total Repayment</Text>
+              <Text style={[styles.subValue, { color: theme.colors.primary, fontSize: 16 }]}>
+                {formatCurrency(loan.remainingRepaymentBalancePaise)}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.heroSubGrid}>
             <View>
-              <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Interest Rate</Text>
+              <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Interest Rate & Method</Text>
               <Text style={[styles.subValue, { color: theme.colors.textSecondary }]}>
-                {(loan.interestRateBps / 100).toFixed(2)}% p.a.
+                {resolvedRate.displayText}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
@@ -150,6 +236,115 @@ export default function LoanDetailModal() {
           </View>
         </Card>
 
+        {/* Tenure & Installments Breakdown */}
+        {loan.tenureMonths !== undefined && (
+          <Card style={{ padding: 16, gap: 12, marginTop: 12 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.colors.textPrimary }}>
+              Tenure & Installments
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>Original Tenure</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.colors.textPrimary }}>
+                  {loan.tenureMonths} months
+                </Text>
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>Completed</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.colors.primary }}>
+                  {loan.completedInstallments ?? 0} installments
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>Remaining Scheduled</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.colors.success }}>
+                  {Math.max(0, loan.tenureMonths - (loan.completedInstallments ?? 0))} months
+                </Text>
+              </View>
+            </View>
+          </Card>
+        )}
+
+        {/* Loan Amortization & Historical Breakdown */}
+        {existingLoanCalc && (
+          <Card style={{ padding: 16, gap: 12, marginTop: 12 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.colors.textPrimary }}>
+              Amortization & Payment Breakdown
+            </Text>
+
+            <View style={styles.heroSubGrid}>
+              <View>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Original Principal</Text>
+                <Text style={[styles.subValue, { color: theme.colors.textPrimary, fontWeight: '600' }]}>
+                  {formatCurrency(loan.originalAmountPaise)}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Total Scheduled Repayment</Text>
+                <Text style={[styles.subValue, { color: theme.colors.textPrimary, fontWeight: '600' }]}>
+                  {formatCurrency(loan.totalScheduledRepaymentPaise ?? existingLoanCalc.totalScheduledRepaymentPaise)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.heroSubGrid, { paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(120, 120, 120, 0.12)' }]}>
+              <View>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Historical Payments Made</Text>
+                <Text style={[styles.subValue, { color: theme.colors.textSecondary }]}>
+                  {formatCurrency(existingLoanCalc.historicalPaymentsPaidPaise)} ({loan.completedInstallments ?? 0} EMIs)
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Remaining Scheduled Repayment</Text>
+                <Text style={[styles.subValue, { color: theme.colors.primary, fontWeight: '600' }]}>
+                  {formatCurrency(loan.remainingRepaymentBalancePaise ?? existingLoanCalc.finalRemainingRepaymentPaise)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.heroSubGrid, { paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(120, 120, 120, 0.12)' }]}>
+              <View>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Historical Principal Repaid</Text>
+                <Text style={[styles.subValue, { color: theme.colors.success }]}>
+                  {formatCurrency(existingLoanCalc.historicalPrincipalPaidPaise)}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Historical Interest Paid</Text>
+                <Text style={[styles.subValue, { color: theme.colors.warning }]}>
+                  {formatCurrency(existingLoanCalc.historicalInterestPaidPaise)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.heroSubGrid, { paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(120, 120, 120, 0.12)' }]}>
+              <View>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Current Outstanding Principal</Text>
+                <Text style={[styles.subValue, { color: theme.colors.textPrimary, fontWeight: '700' }]}>
+                  {formatCurrency(loan.outstandingAmountPaise)}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.subLabel, { color: theme.colors.textTertiary }]}>Remaining Interest Est.</Text>
+                <Text style={[styles.subValue, { color: theme.colors.textSecondary }]}>
+                  {formatCurrency(existingLoanCalc.remainingInterestEstimatePaise)}
+                </Text>
+              </View>
+            </View>
+          </Card>
+        )}
+
+        {/* Interest Model Comparison Card */}
+        {loan.originalAmountPaise > 0 && loan.plannedPaymentPaise > 0 && (loan.tenureMonths ?? 36) > 0 && (
+          <InterestComparisonCard
+            principalPaise={loan.originalAmountPaise}
+            monthlyEmiPaise={loan.plannedPaymentPaise}
+            tenureMonths={loan.tenureMonths ?? 36}
+            selectedInterestType={activeInterestType}
+            onSelectInterestType={handleSelectInterestModel}
+          />
+        )}
+
         {/* Estimated Payoff Breakdown */}
         <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
           Estimated Payoff Calculation
@@ -157,7 +352,11 @@ export default function LoanDetailModal() {
 
         <LoanScenarioCard
           title="Current Repayment Pace"
-          description={`Paying ${formatCurrency(loan.plannedPaymentPaise)} monthly`}
+          description={
+            loan.tenureMonths && (payoffDetails.estimatedPayoffMonths === (loan.tenureMonths - (loan.completedInstallments ?? 0)))
+              ? `Paying scheduled ${formatCurrency(loan.plannedPaymentPaise)} monthly aligns payoff with remaining ${payoffDetails.estimatedPayoffMonths} scheduled installments.`
+              : `Paying ${formatCurrency(loan.plannedPaymentPaise)} monthly (estimated ${payoffDetails.estimatedPayoffMonths} months based on current balance and ${((effectiveRateBps)/100).toFixed(2)}% p.a. rate)`
+          }
           monthlyPaymentPaise={loan.plannedPaymentPaise}
           payoffMonths={payoffDetails.estimatedPayoffMonths}
           totalInterestPaise={payoffDetails.estimatedTotalInterestPaise}
@@ -190,7 +389,7 @@ export default function LoanDetailModal() {
 
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.paymentDate, { color: theme.colors.textTertiary }]}>
-                    {formatDate(p.date)}
+                    {p.createdAt ? formatDateTime(p.createdAt) : formatDate(p.date)}
                   </Text>
                   <Text style={[styles.recordedBy, { color: theme.colors.textSecondary }]}>
                     by {p.paidByUserName ?? 'User'}

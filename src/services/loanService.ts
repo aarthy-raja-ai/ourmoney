@@ -15,6 +15,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  runTransaction,
   Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
@@ -24,6 +25,7 @@ import type { LoanPayment, CreateLoanPaymentInput } from '../models/loanPayment'
 import { COLLECTIONS, SUBCOLLECTIONS } from './collections';
 import { toUserFriendlyError } from '../utils/errorMessages';
 import { assertNoSensitiveFields } from '../utils/privacyValidation';
+import { calculateExistingLoanState, resolveLoanInterestRate } from '../utils/loanCalculations';
 
 // Privacy guard: fields that must never appear in loan data
 const LOAN_BANNED_FIELDS = [
@@ -80,6 +82,48 @@ export async function addLoan(
   } catch (error) {
     if (error instanceof Error && !error.message.includes('Firebase')) throw error;
     throw new Error(toUserFriendlyError(error, 'loan-save'));
+  }
+}
+
+/**
+ * Register historical EMI payment logs for an existing loan without creating duplicate expenses.
+ */
+export async function registerHistoricalLoanPayments(
+  householdId: string,
+  loanId: string,
+  schedule: Array<{ installmentNumber: number; paymentPaise: number }>,
+  completedCount: number,
+  userId: string,
+  userName?: string,
+): Promise<void> {
+  try {
+    const batchPromises = [];
+    const now = new Date();
+
+    for (let i = 0; i < completedCount && i < schedule.length; i++) {
+      const item = schedule[i];
+      const paymentDate = new Date(now);
+      paymentDate.setMonth(now.getMonth() - (completedCount - i));
+
+      const paymentData = {
+        loanId,
+        householdId,
+        amountPaise: item.paymentPaise,
+        paymentType: 'emi',
+        date: Timestamp.fromDate(paymentDate),
+        notes: `Historical EMI #${item.installmentNumber}`,
+        createdByUserId: userId,
+        paidByUserId: userId,
+        paidByUserName: userName ?? 'User',
+        createdAt: serverTimestamp(),
+      };
+
+      batchPromises.push(addDoc(paymentsRef(householdId), paymentData));
+    }
+
+    await Promise.all(batchPromises);
+  } catch (err) {
+    console.log('[HISTORICAL_PAYMENTS_REGISTER_ERROR]', err);
   }
 }
 
@@ -163,10 +207,13 @@ export function subscribeToLoans(
   );
 }
 
+function expensesRef(householdId: string) {
+  return collection(db, COLLECTIONS.HOUSEHOLDS, householdId, SUBCOLLECTIONS.EXPENSES);
+}
+
 /**
- * Record a loan payment and update the outstanding balance.
- * Only adjusts outstanding by the amount explicitly recorded by the user.
- * Does NOT silently assume interest vs principal split.
+ * Record a loan payment, create linked household expense, and update the outstanding balance.
+ * Uses atomic Firestore transaction to prevent duplicate expenses on retries or double submission.
  */
 export async function recordLoanPayment(
   householdId: string,
@@ -177,42 +224,154 @@ export async function recordLoanPayment(
   try {
     assertNoSensitiveFields(payment as Record<string, unknown>);
 
-    // Record the payment
-    const cleanPayment: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(payment)) {
-      if (val !== undefined) {
-        cleanPayment[key] = val;
-      }
-    }
     const createdByUserId = payment.createdByUserId ?? payment.paidByUserId ?? auth.currentUser?.uid ?? '';
-    const paymentData = {
-      ...cleanPayment,
-      loanId,
-      householdId,
-      createdByUserId,
-      createdAt: serverTimestamp(),
-    };
-    await addDoc(paymentsRef(householdId), paymentData);
+    const paymentDocRef = doc(paymentsRef(householdId));
+    const paymentId = paymentDocRef.id;
+    const expenseDocRef = doc(expensesRef(householdId), paymentId);
+    const loanDocRef = doc(db, COLLECTIONS.HOUSEHOLDS, householdId, SUBCOLLECTIONS.LOANS, loanId);
 
-    // Update outstanding balance
-    // For interest-only payments: outstanding stays same
-    // For EMI / principal / custom: reduce by payment amount
-    let newOutstanding = currentOutstandingPaise;
+    let newOutstandingResult = currentOutstandingPaise;
 
-    if (payment.paymentType !== 'interest') {
-      newOutstanding = Math.max(0, currentOutstandingPaise - payment.amountPaise);
-    }
+    await runTransaction(db, async (transaction) => {
+      const loanSnap = await transaction.get(loanDocRef);
+      if (!loanSnap.exists()) {
+        throw new Error('Loan document not found.');
+      }
+      const loanData = loanSnap.data() as Loan;
 
-    await updateDoc(
-      doc(db, COLLECTIONS.HOUSEHOLDS, householdId, SUBCOLLECTIONS.LOANS, loanId),
-      {
-        outstandingAmountPaise: newOutstanding,
-        isActive: newOutstanding > 0,
+      // Idempotency check: if expenseDocRef already exists, abort duplicate write
+      const existingExpenseSnap = await transaction.get(expenseDocRef);
+      if (existingExpenseSnap.exists()) {
+        newOutstandingResult = loanData.outstandingAmountPaise;
+        return;
+      }
+
+      const isInterestOnly = payment.paymentType === 'interest';
+      const isPrincipalOnly = payment.paymentType === 'principal';
+
+      let newCompleted = loanData.completedInstallments ?? 0;
+      let newOutstanding = loanData.outstandingAmountPaise;
+      let newRemainingRepayment = loanData.remainingRepaymentBalancePaise;
+      let rateToPersist = loanData.interestRateBps;
+
+      if (isInterestOnly) {
+        newOutstanding = loanData.outstandingAmountPaise;
+        newRemainingRepayment = Math.max(
+          0,
+          (loanData.remainingRepaymentBalancePaise ?? newOutstanding) - payment.amountPaise,
+        );
+      } else if (isPrincipalOnly) {
+        newOutstanding = Math.max(0, loanData.outstandingAmountPaise - payment.amountPaise);
+        newRemainingRepayment = Math.max(
+          0,
+          (loanData.remainingRepaymentBalancePaise ?? newOutstanding) - payment.amountPaise,
+        );
+      } else {
+        // Standard EMI payment
+        newCompleted = newCompleted + 1;
+
+        if (loanData.originalAmountPaise > 0 && loanData.tenureMonths) {
+          const resolvedRate = resolveLoanInterestRate({
+            interestType: loanData.interestType,
+            interestRateBps: loanData.interestRateBps,
+            principalPaise: loanData.originalAmountPaise,
+            monthlyEmiPaise: loanData.plannedPaymentPaise || payment.amountPaise,
+            tenureMonths: loanData.tenureMonths,
+          });
+
+          const rateToUse = resolvedRate.isValid ? resolvedRate.rateBps : loanData.interestRateBps;
+          if (loanData.interestRateBps === 0 && rateToUse > 0) {
+            rateToPersist = rateToUse;
+          }
+
+          const updatedState = calculateExistingLoanState({
+            originalPrincipalPaise: loanData.originalAmountPaise,
+            annualRateBps: rateToUse,
+            totalTenureMonths: loanData.tenureMonths,
+            completedInstallments: newCompleted,
+            monthlyEmiPaise: loanData.plannedPaymentPaise || payment.amountPaise,
+            interestType: loanData.interestType,
+            lenderOutstandingPaise: loanData.isLenderOutstandingConfirmed
+              ? Math.max(0, loanData.outstandingAmountPaise - payment.amountPaise)
+              : undefined,
+            lenderRemainingRepaymentPaise: loanData.isLenderRemainingRepaymentConfirmed
+              ? Math.max(0, (loanData.remainingRepaymentBalancePaise ?? 0) - payment.amountPaise)
+              : undefined,
+          });
+
+          newOutstanding = updatedState.finalOutstandingPrincipalPaise;
+          newRemainingRepayment = updatedState.finalRemainingRepaymentPaise;
+        } else {
+          newOutstanding = Math.max(0, loanData.outstandingAmountPaise - payment.amountPaise);
+          newRemainingRepayment = Math.max(
+            0,
+            (loanData.remainingRepaymentBalancePaise ?? newOutstanding) - payment.amountPaise,
+          );
+        }
+      }
+
+      const prevTotalPaid = loanData.totalAmountPaidPaise ?? 0;
+      const newTotalPaid = prevTotalPaid + payment.amountPaise;
+
+      newOutstandingResult = newOutstanding;
+
+      const cleanPayment: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(payment)) {
+        if (val !== undefined) cleanPayment[key] = val;
+      }
+
+      // Write LoanPayment document
+      transaction.set(paymentDocRef, {
+        ...cleanPayment,
+        id: paymentId,
+        loanId,
+        householdId,
+        createdByUserId,
+        expenseId: paymentId,
+        createdAt: serverTimestamp(),
+      });
+
+      // Write linked Expense document
+      const lenderName = loanData.lenderName || 'Loan';
+      const expenseDescription = `Loan EMI: ${lenderName}`;
+
+      transaction.set(expenseDocRef, {
+        id: paymentId,
+        householdId,
+        amountPaise: payment.amountPaise,
+        categoryId: 'financial_loans',
+        subcategoryId: 'loan_emi',
+        description: expenseDescription,
+        paidByUserId: payment.paidByUserId ?? createdByUserId,
+        paidByUserName: payment.paidByUserName,
+        createdByUserId,
+        paymentMethod: 'upi',
+        paymentStatus: 'paid',
+        date: payment.date,
+        notes: payment.notes ? `[EMI Payment for ${lenderName}] ${payment.notes}` : `[EMI Payment for ${lenderName}]`,
+        loanId,
+        loanPaymentId: paymentId,
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      },
-    );
+      });
 
-    return { newOutstandingPaise: newOutstanding };
+      // Update Loan document
+      const loanUpdates: Record<string, unknown> = {
+        completedInstallments: newCompleted,
+        outstandingAmountPaise: newOutstanding,
+        totalAmountPaidPaise: newTotalPaid,
+        remainingRepaymentBalancePaise: newRemainingRepayment,
+        isActive: newOutstanding > 0 || newRemainingRepayment > 0,
+        updatedAt: serverTimestamp(),
+      };
+      if (rateToPersist > 0 && loanData.interestRateBps === 0) {
+        loanUpdates.interestRateBps = rateToPersist;
+      }
+
+      transaction.update(loanDocRef, loanUpdates);
+    });
+
+    return { newOutstandingPaise: newOutstandingResult };
   } catch (error) {
     if (error instanceof Error && !error.message.includes('Firebase')) throw error;
     throw new Error(toUserFriendlyError(error, 'payment-save'));

@@ -21,6 +21,7 @@ export interface LoanPayment {
   createdByUserId: string;
   paidByUserId?: string;
   paidByUserName?: string;
+  expenseId?: string;
   createdAt: Timestamp;
 }
 

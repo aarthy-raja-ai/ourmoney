@@ -42,14 +42,14 @@ export const formatCurrency = formatAmount;
  * Format a rupee amount with Indian number formatting.
  */
 export function formatRupees(rupees: number): string {
-  if (isNaN(rupees) || !isFinite(rupees)) return '₹0.00';
+  if (isNaN(rupees) || !isFinite(rupees)) return '₹0';
 
   const isNegative = rupees < 0;
   const abs = Math.abs(rupees);
+  const hasDecimals = abs % 1 !== 0;
 
-  // Use Intl for proper formatting — Indian locale
   const formatted = abs.toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
+    minimumFractionDigits: hasDecimals ? 2 : 0,
     maximumFractionDigits: 2,
   });
 
@@ -62,23 +62,30 @@ export function formatRupees(rupees: number): string {
  *   85050 → "₹850"
  *   100000 → "₹1,000"
  *   10000000 → "₹1L"  (lakh)
- *   100000000 → "₹1Cr" (crore)
+ *   100000000 → "₹10L" (lakh)
+ *   1000000000 → "₹1Cr" (crore)
  */
-export function formatAmountCompact(paise: number): string {
+export function formatCompactCurrency(paise: number): string {
   const rupees = paiseToRupees(paise);
   const abs = Math.abs(rupees);
 
   if (abs >= 10_000_000) {
-    return `₹${(rupees / 10_000_000).toFixed(1)}Cr`;
+    const cr = rupees / 10_000_000;
+    return `₹${cr % 1 === 0 ? cr : cr.toFixed(1)}Cr`;
   }
   if (abs >= 100_000) {
-    return `₹${(rupees / 100_000).toFixed(1)}L`;
+    const l = rupees / 100_000;
+    return `₹${l % 1 === 0 ? l : l.toFixed(1)}L`;
   }
   if (abs >= 1_000) {
-    return `₹${(rupees / 1_000).toFixed(1)}K`;
+    const k = rupees / 1_000;
+    return `₹${k % 1 === 0 ? k : k.toFixed(1)}K`;
   }
   return `₹${Math.round(rupees)}`;
 }
+
+export const parseCurrencyInput = parseRupeeInput;
+export const formatAmountCompact = formatCompactCurrency;
 
 /**
  * Safe addition of paise values (integer arithmetic).

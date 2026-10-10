@@ -58,6 +58,15 @@ export interface Loan {
   repaymentFrequency: RepaymentFrequency;
   customFrequencyDays?: number;    // used when frequency = 'custom'
   plannedPaymentPaise: number;     // user's planned payment per period
+  tenureMonths?: number;           // total scheduled installment count in months
+  completedInstallments?: number;  // completed installments for existing/in-progress loans
+  isExistingLoan?: boolean;        // true if loan was already started before tracking
+  isLenderOutstandingConfirmed?: boolean;
+  isLenderRemainingRepaymentConfirmed?: boolean;
+  totalScheduledInterestPaise?: number; // total scheduled interest over loan term
+  totalScheduledRepaymentPaise?: number; // total scheduled principal + interest
+  totalAmountPaidPaise?: number;   // total payments recorded so far
+  remainingRepaymentBalancePaise?: number; // remaining scheduled repayment balance
   nextPaymentDate?: Timestamp;
   notes?: string;
   isActive: boolean;
@@ -81,6 +90,15 @@ export type UpdateLoanInput = Partial<
     | 'repaymentFrequency'
     | 'customFrequencyDays'
     | 'plannedPaymentPaise'
+    | 'tenureMonths'
+    | 'completedInstallments'
+    | 'isExistingLoan'
+    | 'isLenderOutstandingConfirmed'
+    | 'isLenderRemainingRepaymentConfirmed'
+    | 'totalScheduledInterestPaise'
+    | 'totalScheduledRepaymentPaise'
+    | 'totalAmountPaidPaise'
+    | 'remainingRepaymentBalancePaise'
     | 'nextPaymentDate'
     | 'notes'
     | 'isActive'
